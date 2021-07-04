@@ -6,6 +6,7 @@ import corgitaco.modid.util.fastnoise.FastNoise;
 import it.unimi.dsi.fastutil.longs.LongArraySet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.util.Direction;
 import net.minecraft.util.SharedSeedRandom;
@@ -57,14 +58,13 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
 
         LongSet missedChunks = this.missedChunks.computeIfAbsent(worldRegion.getLevel(), (level) -> new LongArraySet());
 
-        int searchRange = 5;
+        int searchRange = 3;
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
 
         int xSeed = chunkX >> 4;
         int zSeed = chunkZ >> 4;
-        SharedSeedRandom structureRandom = new SharedSeedRandom();
-        structureRandom.setSeed((long) (xSeed ^ zSeed << 4) ^ seed);
+        //        structureRandom.setSeed((long) (xSeed ^ zSeed << 4) ^ seed);
         BiomeProvider biomeSource = generator.getBiomeSource();
 
         Structure<VillageConfig> village = Structure.VILLAGE;
@@ -81,17 +81,17 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
                         continue;
                     }
 
-                    ChunkPos chunkPos = village.getPotentialFeatureChunk(generator.getSettings().structureConfig().get(village), seed, structureRandom, currentChunkX, currentChunkZ);
+                    ChunkPos chunkPos = village.getPotentialFeatureChunk(generator.getSettings().structureConfig().get(village), seed, new SharedSeedRandom(), currentChunkX, currentChunkZ);
 
-                    if (chunkPos.x == currentChunkX && chunkPos.z == currentChunkZ && sampleAndTestChunkBiomesForStructure(currentChunkX, 5, currentChunkZ, biomeSource, village)) {
+                    if (chunkPos.x == currentChunkX && chunkPos.z == currentChunkZ && sampleAndTestChunkBiomesForStructure(currentChunkX, currentChunkZ, biomeSource, village)) {
                         int blockX = SectionPos.sectionToBlockCoord(chunkPos.x);
                         int blockZ = SectionPos.sectionToBlockCoord(chunkPos.z);
                         BlockPos pos1 = new BlockPos(blockX, generator.getBaseHeight(blockX, blockZ, Heightmap.Type.WORLD_SURFACE_WG) + 1, blockZ);
                         cache.put(level, new PathGenerator(noise, worldRegion, pos1, generator, blockPos -> false, nodePos -> {
                             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
                             int nodeChunkZ = SectionPos.sectionToBlockCoord(nodePos.getZ());
-                            ChunkPos foundPotentialFeatureChunk = village.getPotentialFeatureChunk(generator.getSettings().structureConfig().get(village), seed, structureRandom, nodeChunkX, nodeChunkZ);
-                            return foundPotentialFeatureChunk.x == nodeChunkX && foundPotentialFeatureChunk.z == nodeChunkZ && sampleAndTestChunkBiomesForStructure(nodeChunkX, 0, nodeChunkZ, biomeSource, village);
+                            ChunkPos foundPotentialFeatureChunk = village.getPotentialFeatureChunk(generator.getSettings().structureConfig().get(village), seed, new SharedSeedRandom(), nodeChunkX, nodeChunkZ);
+                            return foundPotentialFeatureChunk.x == nodeChunkX && foundPotentialFeatureChunk.z == nodeChunkZ && sampleAndTestChunkBiomesForStructure(nodeChunkX, nodeChunkZ, biomeSource, village);
                         }, 2500));
                     } else {
                         if (missedChunks.size() > 5000) {
@@ -129,8 +129,11 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
                 node.setHeightAtLocation(worldRegionHeight);
                 mutable.setY(worldRegionHeight);
                 nodePos.setY(worldRegionHeight);
+
+                BlockState state = node.getIdx() == 0 ? Blocks.EMERALD_BLOCK.defaultBlockState() : node.getIdx() == pathGenerator.getTotalNumberOfNodes() ? Blocks.REDSTONE_BLOCK.defaultBlockState() : Blocks.DIAMOND_BLOCK.defaultBlockState();
+
                 for (int height = 0; height < 25; height++) {
-                    worldRegion.setBlock(mutable.move(Direction.UP), Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
+                    worldRegion.setBlock(mutable.move(Direction.UP), state, 2);
                 }
             }
         }
@@ -150,17 +153,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
-    public boolean sampleAndTestChunkBiomesForStructure(int chunkX, int y, int chunkZ, BiomeManager.IBiomeReader biomeReader, Structure<?> structure) {
-        int blockX = SectionPos.sectionToBlockCoord(chunkX);
-        int blockZ = SectionPos.sectionToBlockCoord(chunkZ);
-
-        for (int x = blockX; x < blockX + 16; x += 4) {
-            for (int z = blockZ; z < blockZ + 16; z += 4) {
-                if (biomeReader.getNoiseBiome(x, y, z).getGenerationSettings().isValidStart(structure)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+    public boolean sampleAndTestChunkBiomesForStructure(int chunkX, int chunkZ, BiomeManager.IBiomeReader biomeReader, Structure<?> structure) {
+        return biomeReader.getNoiseBiome((chunkX << 2) + 2, 0, (chunkZ << 2) + 2).getGenerationSettings().isValidStart(structure);
     }
 }

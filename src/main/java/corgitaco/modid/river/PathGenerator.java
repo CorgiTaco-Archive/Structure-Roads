@@ -69,7 +69,6 @@ public class PathGenerator {
                 this.nodes = nodes;
                 this.fastNodes = fastNodes;
                 return;
-
             }
             nodes.add(nextNode);
             fastNodes.computeIfAbsent(key, key2 -> new ArrayList<>()).add(nextNode);
