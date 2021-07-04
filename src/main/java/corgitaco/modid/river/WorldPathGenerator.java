@@ -26,6 +26,7 @@ import net.minecraft.world.gen.feature.structure.Structure;
 import net.minecraft.world.gen.feature.structure.VillageConfig;
 import net.minecraft.world.gen.placement.NoPlacementConfig;
 import net.minecraft.world.gen.placement.Placement;
+import net.minecraft.world.gen.settings.StructureSeparationSettings;
 import net.minecraft.world.server.ServerWorld;
 
 import java.util.Map;
@@ -49,7 +50,8 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
     Map<World, PathGenerator> cache = new Object2ObjectArrayMap<>();
 
     Map<World, LongSet> missedChunks = new Object2ObjectArrayMap<>();
-
+    Map<World, LongSet> sampled = new Object2ObjectArrayMap<>();
+    Map<World, LongSet> structurePositions = new Object2ObjectArrayMap<>();
 
     @Override
     public boolean place(ISeedReader worldRegion, ChunkGenerator generator, Random rand, BlockPos pos, NoFeatureConfig config) {
@@ -58,7 +60,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
 
         LongSet missedChunks = this.missedChunks.computeIfAbsent(worldRegion.getLevel(), (level) -> new LongArraySet());
 
-        int searchRange = 3;
+        int searchRange = 100;
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
 
@@ -70,6 +72,8 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
         Structure<VillageConfig> village = Structure.VILLAGE;
 
         ServerWorld level = worldRegion.getLevel();
+        LongSet sampled = this.sampled.computeIfAbsent(level, (level1) -> new LongArraySet());
+
         if (!cache.containsKey(level)) {
             for (int chunkXSearch = -searchRange; chunkXSearch < searchRange; chunkXSearch++) {
                 for (int chunkZSearch = -searchRange; chunkZSearch < searchRange; chunkZSearch++) {
@@ -81,7 +85,8 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
                         continue;
                     }
 
-                    ChunkPos chunkPos = village.getPotentialFeatureChunk(generator.getSettings().structureConfig().get(village), seed, new SharedSeedRandom(), currentChunkX, currentChunkZ);
+                    StructureSeparationSettings structureSeperationSettings = generator.getSettings().structureConfig().get(village);
+                    ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeperationSettings, seed, new SharedSeedRandom(), currentChunkX, currentChunkZ);
 
                     if (chunkPos.x == currentChunkX && chunkPos.z == currentChunkZ && sampleAndTestChunkBiomesForStructure(currentChunkX, currentChunkZ, biomeSource, village)) {
                         int blockX = SectionPos.sectionToBlockCoord(chunkPos.x);
@@ -89,10 +94,25 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
                         BlockPos pos1 = new BlockPos(blockX, generator.getBaseHeight(blockX, blockZ, Heightmap.Type.WORLD_SURFACE_WG) + 1, blockZ);
                         cache.put(level, new PathGenerator(noise, worldRegion, pos1, generator, blockPos -> false, nodePos -> {
                             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
-                            int nodeChunkZ = SectionPos.sectionToBlockCoord(nodePos.getZ());
-                            ChunkPos foundPotentialFeatureChunk = village.getPotentialFeatureChunk(generator.getSettings().structureConfig().get(village), seed, new SharedSeedRandom(), nodeChunkX, nodeChunkZ);
+                            int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
+                            long currentNodeChunk = ChunkPos.asLong(nodeChunkX, nodeChunkZ);
+
+                            int range = 8;
+                            if (sampled.contains(currentNodeChunk) || inRange(nodeChunkX, nodeChunkZ, chunkPos.x, chunkPos.z, range)) {
+                                return false;
+                            }
+
+                            sampled.add(currentNodeChunk);
+
+                            SharedSeedRandom sharedSeedRandom = new SharedSeedRandom();
+//                            sharedSeedRandom.setSeed((long)((nodeChunkX >> 4) ^ (nodeChunkZ >> 4) << 4) ^ seed);
+//                            if (sharedSeedRandom.nextInt(5) != 0) {
+//                                return false;
+//                            }
+
+                            ChunkPos foundPotentialFeatureChunk = village.getPotentialFeatureChunk(structureSeperationSettings, seed, sharedSeedRandom, nodeChunkX, nodeChunkZ);
                             return foundPotentialFeatureChunk.x == nodeChunkX && foundPotentialFeatureChunk.z == nodeChunkZ && sampleAndTestChunkBiomesForStructure(nodeChunkX, nodeChunkZ, biomeSource, village);
-                        }, 2500));
+                        }, 10000));
                     } else {
                         if (missedChunks.size() > 5000) {
                             missedChunks.clear();
@@ -152,6 +172,11 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
             noise.SetFrequency(0.08F / 5);
         }
     }
+
+    private boolean inRange(int chunkX, int chunkZ, int structureX, int structureZ, int radius) {
+        return Math.abs(chunkX - structureX) <= radius && Math.abs(chunkZ - structureZ) <= radius;
+    }
+
 
     public boolean sampleAndTestChunkBiomesForStructure(int chunkX, int chunkZ, BiomeManager.IBiomeReader biomeReader, Structure<?> structure) {
         return biomeReader.getNoiseBiome((chunkX << 2) + 2, 0, (chunkZ << 2) + 2).getGenerationSettings().isValidStart(structure);
