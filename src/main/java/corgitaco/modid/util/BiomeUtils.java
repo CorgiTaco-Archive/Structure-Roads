@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import corgitaco.modid.Main;
 import corgitaco.modid.mixin.access.BiomeGenerationSettingsAccess;
-import corgitaco.modid.river.WorldPathGenerator;
+import corgitaco.modid.river.WorldStructureAwarePathGenerator;
 import net.minecraft.util.RegistryKey;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.registry.Registry;
@@ -26,7 +26,8 @@ public class BiomeUtils {
     public static final List<Feature<?>> FEATURES = new ArrayList<>();
 
     public static void addFeaturesToBiomes(Biome biome, RegistryKey<Biome> biomeKey) {
-        addFeatureToBiome(biome, GenerationStage.Decoration.RAW_GENERATION, WorldPathGenerator.CONFIGURED_PATH);
+//        addFeatureToBiome(biome, GenerationStage.Decoration.RAW_GENERATION, WorldPathGenerator.CONFIGURED_PATH);
+        addFeatureToBiome(biome, GenerationStage.Decoration.RAW_GENERATION, WorldStructureAwarePathGenerator.CONFIGURED_PATH);
     }
 
     public static <C extends IFeatureConfig, F extends Feature<C>> F createFeature(String id, F feature) {

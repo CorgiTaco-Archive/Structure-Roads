@@ -1,6 +1,8 @@
 package corgitaco.modid;
 
 import corgitaco.modid.river.WorldPathGenerator;
+import corgitaco.modid.river.WorldStructureAwarePathGenerator;
+import net.minecraft.util.SharedSeedRandom;
 import net.minecraft.world.gen.feature.Feature;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
 import net.minecraftforge.event.RegistryEvent;
@@ -20,6 +22,17 @@ public class Main {
     public static final Path CONFIG_PATH = new File(String.valueOf(FMLPaths.CONFIGDIR.get().resolve(MOD_ID))).toPath();
 
     public Main() {
+
+        SharedSeedRandom seedRandom = new SharedSeedRandom();
+
+        for (int chunkX = -100; chunkX < 100; chunkX++) {
+            for (int chunkZ = -100; chunkZ < 100; chunkZ++) {
+                int floorDivX = Math.floorDiv(chunkX, 8);
+                int floorDivZ = Math.floorDiv(chunkZ, 8);
+                System.out.println("Floor div x: " + floorDivX + ", Floor div z: " + floorDivZ);
+            }
+        }
+
     }
 
     @Mod.EventBusSubscriber(modid = MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD)
@@ -27,7 +40,8 @@ public class Main {
         @SubscribeEvent
         public static void registerFeatures(RegistryEvent.Register<Feature<?>> event) {
             Feature<NoFeatureConfig> path = WorldPathGenerator.PATH;
-            event.getRegistry().register(path);
+            Feature<NoFeatureConfig> path2 = WorldStructureAwarePathGenerator.PATH;
+            event.getRegistry().registerAll(path, path2);
         }
     }
 }

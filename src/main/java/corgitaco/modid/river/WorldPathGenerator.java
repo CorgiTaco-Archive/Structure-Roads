@@ -60,7 +60,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
 
         LongSet missedChunks = this.missedChunks.computeIfAbsent(worldRegion.getLevel(), (level) -> new LongArraySet());
 
-        int searchRange = 100;
+        int searchRange = 1000;
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
 
