@@ -192,8 +192,8 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
                 int pathCountEndStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(endStructurePos, structurePos -> 0);
 
-
                 if (pathCountStartStructurePos > 2) {
+                    regionPositions.remove(startStructurePos);
                     structurePositionsForRegion = regionStructurePositions.toLongArray();
                     startStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
                 }
