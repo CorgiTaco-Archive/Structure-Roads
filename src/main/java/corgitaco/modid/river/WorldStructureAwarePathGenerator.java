@@ -168,67 +168,70 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         if (regionPositions.containsKey(regionLong)) {
             LongSet regionStructurePositions = regionPositions.get(regionLong);
-            long[] structurePositionsForRegion = regionStructurePositions.toLongArray();
+            if (!regionStructurePositions.isEmpty()) {
 
-            int startStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
-            long startStructurePos = structurePositionsForRegion[startStructureIdx];
-            int pathCountStartStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(startStructurePos, structurePos -> 0);
+                long[] structurePositionsForRegion = regionStructurePositions.toLongArray();
 
-            int endStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
+                int startStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
+                long startStructurePos = structurePositionsForRegion[startStructureIdx];
+                int pathCountStartStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(startStructurePos, structurePos -> 0);
 
-            while (startStructureIdx == endStructureIdx) {
-                endStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
-            }
-            long endStructurePos = structurePositionsForRegion[endStructureIdx];
-            int pathCountEndStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(endStructurePos, structurePos -> 0);
+                int endStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
 
-
-            if (pathCountStartStructurePos > 2) {
-                regionPositions.remove(startStructurePos);
-                structurePositionsForRegion = regionStructurePositions.toLongArray();
-                startStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
-            }
-
-            if (pathCountEndStructurePos > 2) {
-                regionPositions.remove(endStructurePos);
-                structurePositionsForRegion = regionStructurePositions.toLongArray();
-                endStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
-            }
-
-            BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(ChunkPos.getX(startStructurePos)), 0, SectionPos.sectionToBlockCoord(ChunkPos.getZ(startStructurePos)));
-            BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(ChunkPos.getX(endStructurePos)), 0, SectionPos.sectionToBlockCoord(ChunkPos.getZ(endStructurePos)));
+                while (startStructureIdx == endStructureIdx) {
+                    endStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
+                }
+                long endStructurePos = structurePositionsForRegion[endStructureIdx];
+                int pathCountEndStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(endStructurePos, structurePos -> 0);
 
 
-            Predicate<StartEndPathGenerator.Node> invalid = node -> {
-                BlockPos nodePos = node.getPos();
-                int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
-                int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
-
-                Biome noiseBiome = biomeSource.getNoiseBiome(nodePos.getX(), nodePos.getY(), nodePos.getZ());
-                Biome.Category biomeCategory = noiseBiome.getBiomeCategory();
-                if (biomeCategory == Biome.Category.OCEAN) {
-                    return true;
+                if (pathCountStartStructurePos > 2) {
+                    regionPositions.remove(startStructurePos);
+                    structurePositionsForRegion = regionStructurePositions.toLongArray();
+                    startStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
                 }
 
+                if (pathCountEndStructurePos > 2) {
+                    regionPositions.remove(endStructurePos);
+                    structurePositionsForRegion = regionStructurePositions.toLongArray();
+                    endStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
+                }
 
-                return false;
-            };
+                BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(ChunkPos.getX(startStructurePos)), 0, SectionPos.sectionToBlockCoord(ChunkPos.getZ(startStructurePos)));
+                BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(ChunkPos.getX(endStructurePos)), 0, SectionPos.sectionToBlockCoord(ChunkPos.getZ(endStructurePos)));
 
 
-            StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, worldRegion, startPos, endPos, generator, invalid, node -> {
-                BlockPos nodePos = node.getPos();
-                int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
-                int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
+                Predicate<StartEndPathGenerator.Node> invalid = node -> {
+                    BlockPos nodePos = node.getPos();
+                    int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
+                    int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
 
-                return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
+                    Biome noiseBiome = worldRegion.getBiome(nodePos);
+                    Biome.Category biomeCategory = noiseBiome.getBiomeCategory();
+                    if (biomeCategory == Biome.Category.OCEAN) {
+                        return true;
+                    }
 
-            }, 25000);
 
-            if (startEndPathGenerator.exists()) {
-                regionPathGenerators.computeIfAbsent(regionLong, (long2) -> new ArrayList<>()).add(startEndPathGenerator);
+                    return false;
+                };
 
-                structureChunkPosToConnectedPathCount.put(startStructurePos, pathCountStartStructurePos + 1);
-                structureChunkPosToConnectedPathCount.put(endStructurePos, pathCountEndStructurePos + 1);
+
+                StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, worldRegion, startPos, endPos, generator, invalid, node -> {
+                    BlockPos nodePos = node.getPos();
+                    int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
+                    int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
+
+                    return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
+
+                }, 25000);
+
+                if (startEndPathGenerator.exists()) {
+                    regionPathGenerators.computeIfAbsent(regionLong, (long2) -> new ArrayList<>()).add(startEndPathGenerator);
+
+                    structureChunkPosToConnectedPathCount.put(startStructurePos, pathCountStartStructurePos + 1);
+                    structureChunkPosToConnectedPathCount.put(endStructurePos, pathCountEndStructurePos + 1);
+                }
             }
         }
 
