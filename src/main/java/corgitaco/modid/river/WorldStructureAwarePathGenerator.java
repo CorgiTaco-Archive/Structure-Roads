@@ -18,6 +18,7 @@ import net.minecraft.util.math.MutableBoundingBox;
 import net.minecraft.util.math.SectionPos;
 import net.minecraft.world.ISeedReader;
 import net.minecraft.world.World;
+import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.BiomeManager;
 import net.minecraft.world.biome.provider.BiomeProvider;
 import net.minecraft.world.gen.ChunkGenerator;
@@ -203,11 +204,11 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                 int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
                 int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
 
-//                Biome noiseBiome = biomeSource.getNoiseBiome(nodePos.getX(), nodePos.getY(), nodePos.getZ());
-//                Biome.Category biomeCategory = noiseBiome.getBiomeCategory();
-//                if (biomeCategory == Biome.Category.OCEAN || biomeCategory == Biome.Category.RIVER) {
-//                    return true;
-//                }
+                Biome noiseBiome = biomeSource.getNoiseBiome(nodePos.getX(), nodePos.getY(), nodePos.getZ());
+                Biome.Category biomeCategory = noiseBiome.getBiomeCategory();
+                if (biomeCategory == Biome.Category.OCEAN) {
+                    return true;
+                }
 
 
                 return false;
