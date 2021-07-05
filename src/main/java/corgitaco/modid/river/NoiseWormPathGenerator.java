@@ -19,11 +19,11 @@ import java.util.function.Predicate;
 /**
  * Used to dynamically create a randomly generated path from 1 object to another.
  */
-public class PathGenerator {
+public class NoiseWormPathGenerator {
     private final List<Node> nodes;
     private final Long2ObjectArrayMap<List<Node>> fastNodes;
 
-    public PathGenerator(FastNoise noise, ISeedReader world, BlockPos startPos, ChunkGenerator generator, Predicate<BlockPos> isInvalid, Predicate<BlockPos> isValid, int maxDistance) {
+    public NoiseWormPathGenerator(FastNoise noise, ISeedReader world, BlockPos startPos, ChunkGenerator generator, Predicate<BlockPos> isInvalid, Predicate<BlockPos> isValid, int maxDistance) {
         List<Node> nodes = new ArrayList<>();
         Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
 

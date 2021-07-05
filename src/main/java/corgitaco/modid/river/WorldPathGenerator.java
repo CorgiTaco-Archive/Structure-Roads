@@ -47,7 +47,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
     public static FastNoise noise;
 
 
-    Map<World, PathGenerator> cache = new Object2ObjectArrayMap<>();
+    Map<World, NoiseWormPathGenerator> cache = new Object2ObjectArrayMap<>();
 
     Map<World, LongSet> missedChunks = new Object2ObjectArrayMap<>();
     Map<World, LongSet> sampled = new Object2ObjectArrayMap<>();
@@ -64,9 +64,6 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
 
-        int xSeed = chunkX >> 4;
-        int zSeed = chunkZ >> 4;
-        //        structureRandom.setSeed((long) (xSeed ^ zSeed << 4) ^ seed);
         BiomeProvider biomeSource = generator.getBiomeSource();
 
         Structure<VillageConfig> village = Structure.VILLAGE;
@@ -92,7 +89,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
                         int blockX = SectionPos.sectionToBlockCoord(chunkPos.x);
                         int blockZ = SectionPos.sectionToBlockCoord(chunkPos.z);
                         BlockPos pos1 = new BlockPos(blockX, generator.getBaseHeight(blockX, blockZ, Heightmap.Type.WORLD_SURFACE_WG) + 1, blockZ);
-                        cache.put(level, new PathGenerator(noise, worldRegion, pos1, generator, blockPos -> false, nodePos -> {
+                        cache.put(level, new NoiseWormPathGenerator(noise, worldRegion, pos1, generator, blockPos -> false, nodePos -> {
                             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
                             int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
                             long currentNodeChunk = ChunkPos.asLong(nodeChunkX, nodeChunkZ);
@@ -104,13 +101,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
 
                             sampled.add(currentNodeChunk);
 
-                            SharedSeedRandom sharedSeedRandom = new SharedSeedRandom();
-//                            sharedSeedRandom.setSeed((long)((nodeChunkX >> 4) ^ (nodeChunkZ >> 4) << 4) ^ seed);
-//                            if (sharedSeedRandom.nextInt(5) != 0) {
-//                                return false;
-//                            }
-
-                            ChunkPos foundPotentialFeatureChunk = village.getPotentialFeatureChunk(structureSeperationSettings, seed, sharedSeedRandom, nodeChunkX, nodeChunkZ);
+                            ChunkPos foundPotentialFeatureChunk = village.getPotentialFeatureChunk(structureSeperationSettings, seed, new SharedSeedRandom(), nodeChunkX, nodeChunkZ);
                             return foundPotentialFeatureChunk.x == nodeChunkX && foundPotentialFeatureChunk.z == nodeChunkZ && sampleAndTestChunkBiomesForStructure(nodeChunkX, nodeChunkZ, biomeSource, village);
                         }, 10000));
                     } else {
@@ -131,18 +122,18 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
             return false;
         }
 
-        PathGenerator pathGenerator = cache.get(level);
+        NoiseWormPathGenerator noiseWormPathGenerator = cache.get(level);
 
-        if (!pathGenerator.exists()) {
+        if (!noiseWormPathGenerator.exists()) {
             cache.remove(level);
             return false;
         }
 
         long key = ChunkPos.asLong(chunkX, chunkZ);
 
-        if (pathGenerator.getNodeChunkPositions().contains(key)) {
+        if (noiseWormPathGenerator.getNodeChunkPositions().contains(key)) {
             BlockPos.Mutable mutable = new BlockPos.Mutable();
-            for (PathGenerator.Node node : pathGenerator.getNodesForChunk(key)) {
+            for (NoiseWormPathGenerator.Node node : noiseWormPathGenerator.getNodesForChunk(key)) {
                 BlockPos.Mutable nodePos = node.getPos();
                 mutable.set(nodePos);
                 int worldRegionHeight = worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, nodePos.getX(), nodePos.getZ());
@@ -150,7 +141,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
                 mutable.setY(worldRegionHeight);
                 nodePos.setY(worldRegionHeight);
 
-                BlockState state = node.getIdx() == 0 ? Blocks.EMERALD_BLOCK.defaultBlockState() : node.getIdx() == pathGenerator.getTotalNumberOfNodes() ? Blocks.REDSTONE_BLOCK.defaultBlockState() : Blocks.DIAMOND_BLOCK.defaultBlockState();
+                BlockState state = node.getIdx() == 0 ? Blocks.EMERALD_BLOCK.defaultBlockState() : node.getIdx() == noiseWormPathGenerator.getTotalNumberOfNodes() ? Blocks.REDSTONE_BLOCK.defaultBlockState() : Blocks.DIAMOND_BLOCK.defaultBlockState();
 
                 for (int height = 0; height < 25; height++) {
                     worldRegion.setBlock(mutable.move(Direction.UP), state, 2);

@@ -4,6 +4,8 @@ import com.mojang.serialization.Codec;
 import corgitaco.modid.mixin.access.StructureAccess;
 import corgitaco.modid.util.BiomeUtils;
 import corgitaco.modid.util.fastnoise.FastNoise;
+import it.unimi.dsi.fastutil.longs.Long2IntArrayMap;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArraySet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
@@ -30,8 +32,10 @@ import net.minecraft.world.gen.placement.Placement;
 import net.minecraft.world.gen.settings.StructureSeparationSettings;
 import net.minecraft.world.server.ServerWorld;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.Predicate;
 
 public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
@@ -47,9 +51,32 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
     public static FastNoise noise;
 
-    private final Map<World, LongSet> missedChunks = new Object2ObjectArrayMap<>();
-    private final Map<World, LongSet> structurePositions = new Object2ObjectArrayMap<>();
+    private final Map<World, Long2ReferenceOpenHashMap<LongSet>> missedChunks = new Object2ObjectArrayMap<>();
+    private final Map<World, Long2ReferenceOpenHashMap<LongSet>> structurePositions = new Object2ObjectArrayMap<>();
     private final Map<World, MutableBoundingBox> searchedBox = new Object2ObjectArrayMap<>();
+    private final Map<World, Long2IntArrayMap> structureChunkPosToConnectedPathCount = new Object2ObjectArrayMap<>();
+    private final Map<World, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
+
+
+    public static long regionLong(int regionX, int regionZ) {
+        return (long) regionX & 4294967295L | ((long) regionZ & 4294967295L) << 32;
+    }
+
+    public static int chunkToRegion(int coord) {
+        return coord >> 8;
+    }
+
+    public static int blockToRegion(int coord) {
+        return coord >> 12;
+    }
+
+    public static int regionToBlock(int coord) {
+        return coord << 12;
+    }
+
+    public static int regionToChunk(int coord) {
+        return coord << 8;
+    }
 
     @Override
     public boolean place(ISeedReader worldRegion, ChunkGenerator generator, Random rand, BlockPos pos, NoFeatureConfig config) {
@@ -57,10 +84,14 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         setupNoise(seed);
 
         ServerWorld serverLevel = worldRegion.getLevel();
-        LongSet missedChunks = this.missedChunks.computeIfAbsent(serverLevel, (level) -> new LongArraySet());
-        LongSet structurePositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new LongArraySet());
+        Long2ReferenceOpenHashMap<LongSet> missedChunks = this.missedChunks.computeIfAbsent(serverLevel, (level) -> new Long2ReferenceOpenHashMap<>());
+        Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
+        Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
 
-        int searchRange = 1000;
+        Long2IntArrayMap structureChunkPosToConnectedPathCount = this.structureChunkPosToConnectedPathCount.computeIfAbsent(serverLevel, (level1) -> new Long2IntArrayMap());
+
+
+        int searchRangeInChunks = 1000;
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
 
@@ -74,10 +105,10 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         int currentGridX = Math.floorDiv(chunkX, spacing);
         int currentGridZ = Math.floorDiv(chunkZ, spacing);
 
-        int actualMinGridX = Math.floorDiv(chunkX - searchRange, spacing);
-        int actualMinGridZ = Math.floorDiv(chunkZ - searchRange, spacing);
-        int actualMaxGridX = Math.floorDiv(chunkX + searchRange, spacing);
-        int actualMaxGridZ = Math.floorDiv(chunkZ + searchRange, spacing);
+        int actualMinGridX = Math.floorDiv(chunkX - searchRangeInChunks, spacing);
+        int actualMinGridZ = Math.floorDiv(chunkZ - searchRangeInChunks, spacing);
+        int actualMaxGridX = Math.floorDiv(chunkX + searchRangeInChunks, spacing);
+        int actualMaxGridZ = Math.floorDiv(chunkZ + searchRangeInChunks, spacing);
 
         MutableBoundingBox searchedRange = this.searchedBox.get(serverLevel);
 
@@ -102,6 +133,8 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         for (int structureGridX = minGridX; structureGridX <= maxGridX; structureGridX++) {
             for (int structureGridZ = minGridZ; structureGridZ <= maxGridZ; structureGridZ++) {
                 ChunkPos structureChunkPos = getStructureChunkPos(village, seed, structureSeperationSettings.salt(), new SharedSeedRandom(), spacing, structureSeperationSettings.separation(), structureGridX, structureGridZ);
+                long structureRegionLong = regionLong(chunkToRegion(structureChunkPos.x), chunkToRegion(structureChunkPos.z));
+
                 long currentChunk = ChunkPos.asLong(structureChunkPos.x, structureChunkPos.z);
 
                 if (searchedRange != null && searchedRange.intersects(structureGridX, structureGridZ, structureGridX, structureGridZ)) {
@@ -109,35 +142,125 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                     structureGridZ = minGridZ + searchedRange.getZSpan() - 1;
                 }
 
-                if (missedChunks.contains(currentChunk)) {
+                if (missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).contains(currentChunk)) {
                     continue;
                 }
 
                 ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeperationSettings, seed, new SharedSeedRandom(), structureChunkPos.x, structureChunkPos.z);
 
                 if (chunkPos.x == structureChunkPos.x && chunkPos.z == structureChunkPos.z && sampleAndTestChunkBiomesForStructure(structureChunkPos.x, structureChunkPos.z, biomeSource, village)) {
-                    structurePositions.add(currentChunk);
+                    regionPositions.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(currentChunk);
                 } else {
-                    if (missedChunks.size() > 5000) {
+                    if (missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).size() > 5000) {
                         missedChunks.clear();
                     }
 
-                    missedChunks.add(currentChunk);
+                    missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(currentChunk);
                 }
             }
         }
         this.searchedBox.computeIfAbsent(serverLevel, (level2) -> new MutableBoundingBox()).expand(new MutableBoundingBox(minGridX, 0, minGridZ, maxGridX, 0, maxGridZ));
 
-        long key = ChunkPos.asLong(chunkX, chunkZ);
+        long chunkKey = ChunkPos.asLong(chunkX, chunkZ);
 
-        if (this.structurePositions.get(serverLevel).contains(key)) {
-            BlockPos.Mutable mutable = new BlockPos.Mutable().set(pos);
+        long regionLong = regionLong(chunkToRegion(chunkX), chunkToRegion(chunkZ));
 
-            mutable.setY(worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, mutable.getX(), mutable.getZ()) - 1);
-            for (int height = 0; height < 25; height++) {
-                worldRegion.setBlock(mutable.move(Direction.UP), Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
+        if (regionPositions.containsKey(regionLong)) {
+            LongSet regionStructurePositions = regionPositions.get(regionLong);
+            long[] structurePositionsForRegion = regionStructurePositions.toLongArray();
+
+            int startStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
+            long startStructurePos = structurePositionsForRegion[startStructureIdx];
+            int pathCountStartStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(startStructurePos, structurePos -> 0);
+
+            int endStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
+
+            while (startStructureIdx == endStructureIdx) {
+                endStructureIdx = rand.nextInt(structurePositionsForRegion.length - 1);
+            }
+            long endStructurePos = structurePositionsForRegion[endStructureIdx];
+            int pathCountEndStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(endStructurePos, structurePos -> 0);
+
+
+            if (pathCountStartStructurePos > 2) {
+                regionPositions.remove(startStructurePos);
+                structurePositionsForRegion = regionStructurePositions.toLongArray();
+                startStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
+            }
+
+            if (pathCountEndStructurePos > 2) {
+                regionPositions.remove(endStructurePos);
+                structurePositionsForRegion = regionStructurePositions.toLongArray();
+                endStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
+            }
+
+            BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(ChunkPos.getX(startStructurePos)), 0, SectionPos.sectionToBlockCoord(ChunkPos.getZ(startStructurePos)));
+            BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(ChunkPos.getX(endStructurePos)), 0, SectionPos.sectionToBlockCoord(ChunkPos.getZ(endStructurePos)));
+
+
+            Predicate<StartEndPathGenerator.Node> invalid = node -> {
+                BlockPos nodePos = node.getPos();
+                int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
+                int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
+
+//                Biome noiseBiome = biomeSource.getNoiseBiome(nodePos.getX(), nodePos.getY(), nodePos.getZ());
+//                Biome.Category biomeCategory = noiseBiome.getBiomeCategory();
+//                if (biomeCategory == Biome.Category.OCEAN || biomeCategory == Biome.Category.RIVER) {
+//                    return true;
+//                }
+
+
+                return false;
+            };
+
+
+            StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, worldRegion, startPos, endPos, generator, invalid, node -> {
+                BlockPos nodePos = node.getPos();
+                int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
+                int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
+
+                return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
+
+            }, 25000);
+
+            if (startEndPathGenerator.exists()) {
+                regionPathGenerators.computeIfAbsent(regionLong, (long2) -> new ArrayList<>()).add(startEndPathGenerator);
+
+                structureChunkPosToConnectedPathCount.put(startStructurePos, pathCountStartStructurePos + 1);
+                structureChunkPosToConnectedPathCount.put(endStructurePos, pathCountEndStructurePos + 1);
             }
         }
+
+
+        if (regionPathGenerators.containsKey(regionLong)) {
+            ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.get(regionLong);
+
+            for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
+                if (startEndPathGenerator.getNodeChunkPositions().contains(chunkKey)) {
+                    for (StartEndPathGenerator.Node node : startEndPathGenerator.getNodesForChunk(chunkKey)) {
+                        BlockPos.Mutable mutable = new BlockPos.Mutable().set(node.getPos());
+                        mutable.setY(worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, mutable.getX(), mutable.getZ()) - 1);
+
+                        for (int height = 0; height < 25; height++) {
+                            worldRegion.setBlock(mutable.move(Direction.UP), Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
+                        }
+                    }
+                }
+            }
+        }
+
+//        if (this.structurePositions.get(serverLevel).containsKey(regionLong)) {
+//            if (this.structurePositions.get(serverLevel).get(regionLong).contains(key)) {
+//                BlockPos.Mutable mutable = new BlockPos.Mutable().set(pos);
+//
+//                mutable.setY(worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, mutable.getX(), mutable.getZ()) - 1);
+//                for (int height = 0; height < 25; height++) {
+//                    worldRegion.setBlock(mutable.move(Direction.UP), Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
+//                }
+//            }
+//        }
+
+
         return true;
     }
 
@@ -158,6 +281,25 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return Math.abs(chunkX - structureX) <= radius && Math.abs(chunkZ - structureZ) <= radius;
     }
 
+    private boolean inRange(int chunkX, int structureX, int radius) {
+        return Math.abs(chunkX - structureX) <= radius;
+    }
+
+    private boolean isInDirection(BlockPos currentPos, BlockPos startPos, BlockPos endPos) {
+        int currentPosChunkX = SectionPos.blockToSectionCoord(currentPos.getX());
+        int currentPosChunkZ = SectionPos.blockToSectionCoord(currentPos.getZ());
+
+        int startPosPosChunkX = SectionPos.blockToSectionCoord(startPos.getX());
+        int startPosPosChunkZ = SectionPos.blockToSectionCoord(startPos.getZ());
+
+        int endPosChunkX = SectionPos.blockToSectionCoord(endPos.getX());
+        int endPosChunkZ = SectionPos.blockToSectionCoord(endPos.getZ());
+
+        boolean dontGoBeyondStartPosBounds = inRange(currentPosChunkX, startPosPosChunkX, 8) && inRange(currentPosChunkZ, startPosPosChunkZ, 8);
+
+        int addedSize = 8;
+        return dontGoBeyondStartPosBounds && inRange(currentPosChunkX, endPosChunkX + addedSize, 8) && inRange(currentPosChunkX, endPosChunkZ + addedSize, 8);
+    }
 
     public boolean sampleAndTestChunkBiomesForStructure(int chunkX, int chunkZ, BiomeManager.IBiomeReader biomeReader, Structure<?> structure) {
         return biomeReader.getNoiseBiome((chunkX << 2) + 2, 0, (chunkZ << 2) + 2).getGenerationSettings().isValidStart(structure);
