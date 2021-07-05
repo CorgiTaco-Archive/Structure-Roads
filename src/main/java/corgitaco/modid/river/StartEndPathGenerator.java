@@ -23,6 +23,9 @@ public class StartEndPathGenerator {
     private final List<Node> nodes;
     private final Long2ObjectArrayMap<List<Node>> fastNodes;
 
+    private static float minNoise = 100000;
+    private static float maxNoise = -292929292;
+
     public StartEndPathGenerator(FastNoise noise, ISeedReader world, BlockPos startPos, BlockPos endPos, ChunkGenerator generator, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance) {
         List<Node> nodes = new ArrayList<>();
         Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
@@ -34,8 +37,19 @@ public class StartEndPathGenerator {
         for (int i = 1; i < distanceInNodes; i++) {
             Node prevNode = nodes.get(i - 1);
             float angle = noise.GetNoise(prevNode.getPos().getX(), 0, prevNode.getPos().getZ());
+            if (angle < minNoise) {
+                minNoise = angle;
+                System.out.println("Min noise: " + angle);
+            }
+
+            if (angle > maxNoise) {
+                maxNoise = angle;
+                System.out.println("Max noise: " + angle);
+            }
 
             float noiseAngle = angle * 5;
+
+
             BlockPos.Mutable pos = getNextPosAngled(prevNode, noiseAngle);
             Node nextNode = new Node(pos, i);
 
