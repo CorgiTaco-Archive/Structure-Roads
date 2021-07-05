@@ -25,8 +25,10 @@ public class StartEndPathGenerator {
 
     private static float minNoise = 100000;
     private static float maxNoise = -292929292;
+    private final FastNoise noise;
 
     public StartEndPathGenerator(FastNoise noise, ISeedReader world, BlockPos startPos, BlockPos endPos, ChunkGenerator generator, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance) {
+        this.noise = noise;
         List<Node> nodes = new ArrayList<>();
         Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
 
@@ -37,6 +39,8 @@ public class StartEndPathGenerator {
         for (int i = 1; i < distanceInNodes; i++) {
             Node prevNode = nodes.get(i - 1);
             float angle = noise.GetNoise(prevNode.getPos().getX(), 0, prevNode.getPos().getZ());
+
+
             if (angle < minNoise) {
                 minNoise = angle;
                 System.out.println("Min noise: " + angle);
@@ -102,7 +106,13 @@ public class StartEndPathGenerator {
     // Angle 0 = South(Positive Z)
     // Angle 1.5 = East(Positive X)
     // Angle 3 = North(Negative Z)
+
     private Vector3i getAngleOffset(float angle) {
+        return getAngleOffset(angle, 5);
+    }
+
+
+    public Vector3i getAngleOffset(float angle, int length) {
         Vector2f dAngle = get2DAngle(angle, 5);
         return new Vector3i(dAngle.x, 0, dAngle.y);
     }
@@ -142,11 +152,16 @@ public class StartEndPathGenerator {
         return this.nodes.get(0).getPos();
     }
 
+    public FastNoise getNoise() {
+        return noise;
+    }
+
     static class Node {
 
         private final int idx;
         private final BlockPos.Mutable pos;
         private int heightAtLocation = 0;
+        private boolean generatedForNext;
 
         private Node(BlockPos.Mutable pos, int idx) {
             this.pos = pos;
@@ -171,6 +186,14 @@ public class StartEndPathGenerator {
             }
 
             return heightAtLocation;
+        }
+
+        public boolean isGeneratedForNext() {
+            return generatedForNext;
+        }
+
+        public void setGeneratedForNext(boolean generatedForNext) {
+            this.generatedForNext = generatedForNext;
         }
     }
 }

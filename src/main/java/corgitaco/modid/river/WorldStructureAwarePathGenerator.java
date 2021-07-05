@@ -7,12 +7,12 @@ import corgitaco.modid.util.fastnoise.FastNoise;
 import it.unimi.dsi.fastutil.longs.*;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import net.minecraft.block.Blocks;
-import net.minecraft.util.Direction;
 import net.minecraft.util.SharedSeedRandom;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.MutableBoundingBox;
 import net.minecraft.util.math.SectionPos;
+import net.minecraft.util.math.vector.Vector3i;
 import net.minecraft.world.ISeedReader;
 import net.minecraft.world.World;
 import net.minecraft.world.biome.Biome;
@@ -30,7 +30,9 @@ import net.minecraft.world.gen.placement.Placement;
 import net.minecraft.world.gen.settings.StructureSeparationSettings;
 import net.minecraft.world.server.ServerWorld;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -45,8 +47,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     }
 
     private static long seed;
-
-    public static FastNoise noise;
 
     private final Map<World, Long2ReferenceOpenHashMap<LongSet>> missedChunks = new Object2ObjectArrayMap<>();
     private final Map<World, Long2ReferenceOpenHashMap<LongSet>> structurePositions = new Object2ObjectArrayMap<>();
@@ -80,8 +80,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     @Override
     public boolean place(ISeedReader worldRegion, ChunkGenerator generator, Random rand, BlockPos pos, NoFeatureConfig config) {
         long seed = worldRegion.getSeed();
-        setupNoise(seed);
-
         int searchRangeInChunks = 1000;
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
@@ -130,7 +128,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
                 if (startEndPathGenerator.getNodeChunkPositions().contains(chunkKey)) {
                     for (StartEndPathGenerator.Node node : startEndPathGenerator.getNodesForChunk(chunkKey)) {
-                        generateForNode(worldRegion, node);
+                        generateForNode(worldRegion, node, startEndPathGenerator);
                     }
                 }
             }
@@ -164,30 +162,32 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         for (int structureGridX = minGridX; structureGridX <= maxGridX; structureGridX++) {
             for (int structureGridZ = minGridZ; structureGridZ <= maxGridZ; structureGridZ++) {
-                ChunkPos structureChunkPos = getStructureChunkPos(village, seed, structureSeperationSettings.salt(), new SharedSeedRandom(), spacing, structureSeperationSettings.separation(), structureGridX, structureGridZ);
-                long structureRegionLong = regionLong(chunkToRegion(structureChunkPos.x), chunkToRegion(structureChunkPos.z));
+                long structureChunkPos = getStructureChunkPos(village, seed, structureSeperationSettings.salt(), new SharedSeedRandom(), spacing, structureSeperationSettings.separation(), structureGridX, structureGridZ);
 
-                long currentChunk = ChunkPos.asLong(structureChunkPos.x, structureChunkPos.z);
+                int structureChunkPosX = ChunkPos.getX(structureChunkPos);
+                int structureChunkPosZ = ChunkPos.getZ(structureChunkPos);
+
+                long structureRegionLong = regionLong(chunkToRegion(structureChunkPosX), chunkToRegion(structureChunkPosZ));
 
 //                if (searchedRange != null && searchedRange.intersects(structureGridX, structureGridZ, structureGridX, structureGridZ)) {
 //                    structureGridX = minGridX + searchedRange.getXSpan() - 1;
 //                    structureGridZ = minGridZ + searchedRange.getZSpan() - 1;
 //                }
 
-                if (missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).contains(currentChunk)) {
+                if (missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).contains(structureChunkPos)) {
                     continue;
                 }
 
-                ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeperationSettings, seed, new SharedSeedRandom(), structureChunkPos.x, structureChunkPos.z);
+                ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeperationSettings, seed, new SharedSeedRandom(), structureChunkPosX, structureChunkPosZ);
 
-                if (chunkPos.x == structureChunkPos.x && chunkPos.z == structureChunkPos.z && sampleAndTestChunkBiomesForStructure(structureChunkPos.x, structureChunkPos.z, biomeSource, village)) {
-                    regionPositions.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(currentChunk);
+                if (chunkPos.x == structureChunkPosX && chunkPos.z == structureChunkPosZ && sampleAndTestChunkBiomesForStructure(structureChunkPosX, structureChunkPosZ, biomeSource, village)) {
+                    regionPositions.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(structureChunkPos);
                 } else {
                     if (missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).size() > 5000) {
                         missedChunks.clear();
                     }
 
-                    missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(currentChunk);
+                    missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(structureChunkPos);
                 }
             }
         }
@@ -198,13 +198,46 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     /**
      * If the node from the Path generator intersects the current chunk, generate.
      */
-    private void generateForNode(ISeedReader worldRegion, StartEndPathGenerator.Node node) {
+    private void generateForNode(ISeedReader worldRegion, StartEndPathGenerator.Node node, StartEndPathGenerator pathGenerator) {
         BlockPos.Mutable mutable = new BlockPos.Mutable().set(node.getPos());
         mutable.setY(worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, mutable.getX(), mutable.getZ()) - 1);
 
-        for (int height = 0; height < 25; height++) {
-            worldRegion.setBlock(mutable.move(Direction.UP), Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
+        int size = 3;
+
+
+        List<StartEndPathGenerator.Node> nodes = pathGenerator.getNodes();
+
+        @Nullable
+        StartEndPathGenerator.Node prevNode = 0 >= node.getIdx() - 1 ? nodes.get(node.getIdx() - 1) : null;
+
+
+        if (prevNode != null) {
+            if (!prevNode.isGeneratedForNext()) {
+                generateBlocksForNode(worldRegion, pathGenerator, size, prevNode);
+            }
         }
+        generateBlocksForNode(worldRegion, pathGenerator, size, node);
+    }
+
+    private void generateBlocksForNode(ISeedReader worldRegion, StartEndPathGenerator pathGenerator, int size, StartEndPathGenerator.Node node) {
+        int nodeX = node.getPos().getX();
+        int nodeZ = node.getPos().getZ();
+
+        BlockPos.Mutable mutable1 = new BlockPos.Mutable();
+        for (int i = 0; i <= 5; i++) {
+            Vector3i angleOffset = pathGenerator.getAngleOffset(pathGenerator.getNoise().GetNoise(nodeX, 0, nodeZ), i);
+            int subNodeNextX = nodeX + angleOffset.getX();
+            int subNodeNextZ = nodeZ + angleOffset.getZ();
+            for (int xMove = -size; xMove < size; xMove++) {
+                for (int zMove = -size; zMove < size; zMove++) {
+                    int blockX = subNodeNextX + xMove;
+                    int blockZ = subNodeNextZ + zMove;
+                    mutable1.set(blockX, worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, blockX, blockZ) - 1, blockZ);
+                    worldRegion.setBlock(mutable1, Blocks.COBBLESTONE.defaultBlockState(), 2);
+                }
+            }
+        }
+        node.setGeneratedForNext(true);
     }
 
     private void addPathGenerators(ISeedReader worldRegion, ChunkGenerator generator, Random rand, long seed, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2LongArrayMap successPairPositionsLookup, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, Long2IntArrayMap structureChunkPosToConnectedPathCount, StructureSeparationSettings structureSeperationSettings, long regionLong, LongSet regionStructurePositions) {
@@ -224,7 +257,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                 (successPairPositionsLookup.containsKey(startStructurePos) && successPairPositionsLookup.get(startStructurePos) == endStructurePos)) {
 
             endStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
-            ;
         }
 
         int pathCountEndStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(endStructurePos, structurePos -> 0);
@@ -249,16 +281,14 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
 
-        noise.SetSeed(random.nextInt());
-
-        addPathGenerator(worldRegion, generator, successPairPositionsLookup, regionPathGenerators, structureChunkPosToConnectedPathCount, regionLong, startStructurePos, connectPathCountForStructure, endStructurePos, pathCountEndStructurePos, startPos, endPos);
+        addPathGenerator(worldRegion, createNoise(random.nextInt()), generator, successPairPositionsLookup, regionPathGenerators, structureChunkPosToConnectedPathCount, regionLong, startStructurePos, connectPathCountForStructure, endStructurePos, pathCountEndStructurePos, startPos, endPos);
     }
 
 
     /**
      * Add a path generator to this region's cache and cache how many times a given position has succeeded.
      */
-    private void addPathGenerator(ISeedReader worldRegion, ChunkGenerator generator, Long2LongArrayMap successPairPositionsLookup, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, Long2IntArrayMap structureChunkPosToConnectedPathCount, long regionLong, long startStructurePos, int connectPathCountForStructure, long endStructurePos, int pathCountEndStructurePos, BlockPos startPos, BlockPos endPos) {
+    private void addPathGenerator(ISeedReader worldRegion, FastNoise noise, ChunkGenerator generator, Long2LongArrayMap successPairPositionsLookup, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, Long2IntArrayMap structureChunkPosToConnectedPathCount, long regionLong, long startStructurePos, int connectPathCountForStructure, long endStructurePos, int pathCountEndStructurePos, BlockPos startPos, BlockPos endPos) {
         StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, worldRegion, startPos, endPos, generator, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos))), node -> {
             BlockPos nodePos = node.getPos();
             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
@@ -269,7 +299,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }, 500000);
 
         if (startEndPathGenerator.exists()) {
-            System.out.println(startPos.toString() + ", " + endPos.toString());
+            System.out.printf("/tp %s ~ %s", startPos.getX(), startPos.getZ());
             successPairPositionsLookup.put(startStructurePos, endStructurePos);
 
             regionPathGenerators.computeIfAbsent(regionLong, (long2) -> new ArrayList<>()).add(startEndPathGenerator);
@@ -309,16 +339,14 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return structurePos;
     }
 
-    public static void setupNoise(long serverSeed) {
-        if (seed != serverSeed || noise == null) {
-            seed = serverSeed;
-            noise = new FastNoise((int) seed);
-            noise.SetNoiseType(FastNoise.NoiseType.PerlinFractal);
-            noise.SetGradientPerturbAmp(1);
-            noise.SetFractalOctaves(5);
-            noise.SetFractalGain(0.5f);
-            noise.SetFrequency(0.08F / 5);
-        }
+    public static FastNoise createNoise(int seed) {
+        FastNoise noise = new FastNoise(seed);
+        noise.SetNoiseType(FastNoise.NoiseType.PerlinFractal);
+        noise.SetGradientPerturbAmp(1);
+        noise.SetFractalOctaves(5);
+        noise.SetFractalGain(0.5f);
+        noise.SetFrequency(0.08F / 5);
+        return noise;
     }
 
     private MutableBoundingBox pathBox(long startPos, long endPos) {
@@ -346,7 +374,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     }
 
 
-    private ChunkPos getStructureChunkPos(Structure<?> structure, long worldSeed, int structureSalt, SharedSeedRandom seedRandom, int spacing, int separation, int floorDivX, int floorDivZ) {
+    private long getStructureChunkPos(Structure<?> structure, long worldSeed, int structureSalt, SharedSeedRandom seedRandom, int spacing, int separation, int floorDivX, int floorDivZ) {
         int x;
         int z;
         seedRandom.setLargeFeatureWithSalt(worldSeed, floorDivX, floorDivZ, structureSalt);
@@ -358,6 +386,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             x = (seedRandom.nextInt(spacing - separation) + seedRandom.nextInt(spacing - separation)) / 2;
             z = (seedRandom.nextInt(spacing - separation) + seedRandom.nextInt(spacing - separation)) / 2;
         }
-        return new ChunkPos(floorDivX * spacing + x, floorDivZ * spacing + z);
+        return ChunkPos.asLong(floorDivX * spacing + x, floorDivZ * spacing + z);
     }
 }
