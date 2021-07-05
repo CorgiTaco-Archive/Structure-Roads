@@ -42,7 +42,7 @@ public class StartEndPathGenerator {
             float degreesRotated = 0.0F;
             while (isInvalid.test(nextNode)) {
                 float degrees30 = 0.5F; // Offset by 30 degrees each time.
-                Vector3i angleOffset = getAngleOffsetPos(noiseAngle + degrees30);
+                Vector3i angleOffset = getAngleOffset(noiseAngle + degrees30);
                 degreesRotated += 0.5F;
                 pos.setWithOffset(prevNode.getPos(), angleOffset.getX(), 0, angleOffset.getZ());
 
@@ -80,7 +80,7 @@ public class StartEndPathGenerator {
     }
 
     private BlockPos getAngleOffsetPos(float angle, BlockPos previousNodePos) {
-        Vector3i vecAngle = getAngleOffsetPos(angle);
+        Vector3i vecAngle = getAngleOffset(angle);
         return previousNodePos.offset(vecAngle);
     }
 
@@ -88,7 +88,7 @@ public class StartEndPathGenerator {
     // Angle 0 = South(Positive Z)
     // Angle 1.5 = East(Positive X)
     // Angle 3 = North(Negative Z)
-    private Vector3i getAngleOffsetPos(float angle) {
+    private Vector3i getAngleOffset(float angle) {
         Vector2f dAngle = get2DAngle(angle, 5);
         return new Vector3i(dAngle.x, 0, dAngle.y);
     }
