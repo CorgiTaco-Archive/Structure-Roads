@@ -54,13 +54,13 @@ public class StartEndPathGenerator {
             Node nextNode = new Node(pos, i);
 
             // 0.5F is the equivalent of 30 degrees in this case
-            float degreesRotated = 0.5F;
+            double degreesRotated = Math.PI / 12;
             while (isInvalid.test(nextNode)) {
-                Vector3i angleOffset = getAngleOffset(noiseAngle + degreesRotated);
-                degreesRotated += 0.5F;
-                pos.setWithOffset(prevNode.getPos(), angleOffset.getX(), 0, angleOffset.getZ());
+                Vector3i angleOffset = getAngleOffset((float) (noiseAngle + degreesRotated));
+                degreesRotated += Math.PI / 12;
+                nextNode.getPos().setWithOffset(prevNode.getPos(), angleOffset.getX(), 0, angleOffset.getZ());
 
-                if (degreesRotated == 4.5F) {
+                if (degreesRotated >= Math.PI) {
                     this.nodes = null;
                     this.fastNodes = null;
                     return; // This should never ever hit.
