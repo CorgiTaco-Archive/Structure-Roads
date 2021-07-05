@@ -39,10 +39,10 @@ public class StartEndPathGenerator {
             BlockPos.Mutable pos = getNextPosAngled(prevNode, noiseAngle);
             Node nextNode = new Node(pos, i);
 
-            float degreesRotated = 0.0F;
+            // 0.5F is the equivalent of 30 degrees in this case
+            float degreesRotated = 0.5F;
             while (isInvalid.test(nextNode)) {
-                float degrees30 = 0.5F; // Offset by 30 degrees each time.
-                Vector3i angleOffset = getAngleOffset(noiseAngle + degrees30);
+                Vector3i angleOffset = getAngleOffset(noiseAngle + degreesRotated);
                 degreesRotated += 0.5F;
                 pos.setWithOffset(prevNode.getPos(), angleOffset.getX(), 0, angleOffset.getZ());
 
