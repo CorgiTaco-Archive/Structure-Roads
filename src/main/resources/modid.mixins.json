@@ -8,6 +8,7 @@
     "MixinBiomeGenerationSettings",
     "MixinMinecraftServer",
     "access.BiomeGenerationSettingsAccess",
+    "access.ChunkManagerAccess",
     "access.StructureAccess"
   ],
   "client": [

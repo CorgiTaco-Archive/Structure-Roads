@@ -1,12 +1,15 @@
 package corgitaco.modid.river;
 
 import com.mojang.serialization.Codec;
+import corgitaco.modid.mixin.access.ChunkManagerAccess;
 import corgitaco.modid.mixin.access.StructureAccess;
 import corgitaco.modid.util.BiomeUtils;
 import corgitaco.modid.util.fastnoise.FastNoise;
 import it.unimi.dsi.fastutil.longs.*;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import net.minecraft.block.Blocks;
+import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.util.SharedSeedRandom;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
@@ -31,6 +34,10 @@ import net.minecraft.world.gen.settings.StructureSeparationSettings;
 import net.minecraft.world.server.ServerWorld;
 
 import javax.annotation.Nullable;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +60,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     private final Map<World, Long2IntArrayMap> structureChunkPosToConnectedPathCount = new Object2ObjectArrayMap<>();
     private final Map<World, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
     private final Map<World, Long2LongArrayMap> successPairPositionsLookup = new Object2ObjectArrayMap<>();
+    private final Map<ServerWorld, Path> worldStructureFileCache = new Object2ObjectArrayMap<>();
 
     public static long regionLong(int regionX, int regionZ) {
         return (long) regionX & 4294967295L | ((long) regionZ & 4294967295L) << 32;
@@ -74,12 +82,38 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return coord << 8;
     }
 
+    public static int regionToMaxChunk(int coord) {
+        return regionToChunk(coord + 1) - 1;
+    }
+
     @Override
     public boolean place(ISeedReader worldRegion, ChunkGenerator generator, Random rand, BlockPos pos, NoFeatureConfig config) {
+        ServerWorld serverLevel = worldRegion.getLevel();
+
         long seed = worldRegion.getSeed();
+
         int searchRangeInChunks = 1000;
+        int searchRangeInRegions = chunkToRegion(searchRangeInChunks);
+
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
+
+        int currentRegionX = chunkToRegion(chunkX);
+        int currentRegionZ = chunkToRegion(chunkZ);
+
+        long currentRegion = regionLong(chunkToRegion(chunkX), chunkToRegion(chunkZ));
+
+        Path structureStorageDir = this.worldStructureFileCache.computeIfAbsent(serverLevel, (level) -> {
+            Path storageFolder = ((ChunkManagerAccess) level.getChunkSource().chunkMap).getStorageFolder().toPath().resolve("structures");
+            if (!storageFolder.toFile().exists()) {
+                try {
+                    Files.createDirectories(storageFolder);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            return storageFolder;
+        });
 
         BiomeProvider biomeSource = generator.getBiomeSource();
 
@@ -96,7 +130,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         int actualMaxGridX = Math.floorDiv(chunkX + searchRangeInChunks, spacing);
         int actualMaxGridZ = Math.floorDiv(chunkZ + searchRangeInChunks, spacing);
 
-        ServerWorld serverLevel = worldRegion.getLevel();
 
         Long2ReferenceOpenHashMap<LongSet> missedChunks = this.missedChunks.computeIfAbsent(serverLevel, (level) -> new Long2ReferenceOpenHashMap<>());
         Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
@@ -104,20 +137,47 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         Long2IntArrayMap structureChunkPosToConnectedPathCount = this.structureChunkPosToConnectedPathCount.computeIfAbsent(serverLevel, (level1) -> new Long2IntArrayMap());
         Long2LongArrayMap successPairPositionsLookup = this.successPairPositionsLookup.computeIfAbsent(serverLevel, (level) -> new Long2LongArrayMap());
 
-        createCache(seed, missedChunks, regionPositions, biomeSource, village, structureSeperationSettings, spacing, actualMinGridX, actualMinGridZ, actualMaxGridX, actualMaxGridZ);
-        long chunkKey = ChunkPos.asLong(chunkX, chunkZ);
+        for (int regionX = currentRegionX - searchRangeInRegions; regionX < currentRegionX + searchRangeInRegions; regionX++) {
+            for (int regionZ = currentRegionZ - searchRangeInRegions; regionZ < currentRegionZ + searchRangeInRegions; regionZ++) {
+                long activeRegion = regionLong(regionX, regionZ);
 
-        long regionLong = regionLong(chunkToRegion(chunkX), chunkToRegion(chunkZ));
+                if (!regionPathGenerators.containsKey(activeRegion)) {
+                    String fileName = regionX + "," + regionZ + ".2dr";
+                    File file = structureStorageDir.resolve(fileName).toFile();
+                    if (!file.exists()) {
+                        int activeMinChunkX = regionToChunk(regionX);
+                        int activeMinChunkZ = regionToChunk(regionZ);
 
-        if (regionPositions.containsKey(regionLong)) {
-            LongSet regionStructurePositions = regionPositions.get(regionLong);
-            if (!regionStructurePositions.isEmpty()) {
-                addPathGenerators(worldRegion, generator, rand, seed, successPairPositionsLookup, regionPathGenerators, structureChunkPosToConnectedPathCount, structureSeperationSettings, regionLong, regionStructurePositions);
+                        int activeMaxChunkX = regionToMaxChunk(regionX);
+                        int activeMaxChunkZ = regionToMaxChunk(regionZ);
+
+
+                        int activeMinGridX = Math.floorDiv(activeMinChunkX, spacing);
+                        int activeMinGridZ = Math.floorDiv(activeMinChunkZ, spacing);
+                        int activeMaxGridX = Math.floorDiv(activeMaxChunkX, spacing);
+                        int activeMaxGridZ = Math.floorDiv(activeMaxChunkZ, spacing);
+
+                        scanRegion(seed, biomeSource, village, structureSeperationSettings, spacing, missedChunks, regionPositions, activeMinGridX, activeMinGridZ, activeMaxGridX, activeMaxGridZ);
+
+                        saveNewRegion(regionPositions, activeRegion, file);
+                    }
+                }
             }
         }
 
-        if (regionPathGenerators.containsKey(regionLong)) {
-            ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.get(regionLong);
+
+        long chunkKey = ChunkPos.asLong(chunkX, chunkZ);
+
+
+        if (regionPositions.containsKey(currentRegion)) {
+            LongSet regionStructurePositions = regionPositions.get(currentRegion);
+            if (!regionStructurePositions.isEmpty()) {
+                addPathGenerators(worldRegion, generator, rand, seed, successPairPositionsLookup, regionPathGenerators, structureChunkPosToConnectedPathCount, structureSeperationSettings, currentRegion, regionStructurePositions);
+            }
+        }
+
+        if (regionPathGenerators.containsKey(currentRegion)) {
+            ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.get(currentRegion);
 
             for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
                 if (startEndPathGenerator.getNodeChunkPositions().contains(chunkKey)) {
@@ -131,24 +191,24 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return true;
     }
 
+    private void saveNewRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, long activeRegion, File file) {
+        CompoundNBT nbt = new CompoundNBT();
+        nbt.putLongArray("structurePositions", regionPositions.get(activeRegion).toLongArray());
+        try {
+            CompressedStreamTools.write(nbt, file);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
     /**
-     * Creates the cache of all structure positions.
+     * Creates the cache of all structure positions for the given region
      */
-    private void createCache(long seed, Long2ReferenceOpenHashMap<LongSet> missedChunks, Long2ReferenceOpenHashMap<LongSet> regionPositions, BiomeProvider biomeSource, Structure<VillageConfig> village, StructureSeparationSettings structureSeparationSettings, int spacing, int actualMinGridX, int actualMinGridZ, int actualMaxGridX, int actualMaxGridZ) {
-        int minGridX;
-        int minGridZ;
-        int maxGridX;
-        int maxGridZ;
-
-        minGridX = actualMinGridX;
-        minGridZ = actualMinGridZ;
-        maxGridX = actualMaxGridX;
-        maxGridZ = actualMaxGridZ;
-
-
-        for (int structureGridX = minGridX; structureGridX <= maxGridX; structureGridX++) {
-            for (int structureGridZ = minGridZ; structureGridZ <= maxGridZ; structureGridZ++) {
-                long structureChunkPos = getStructureChunkPos(village, seed, structureSeparationSettings.salt(), new SharedSeedRandom(), spacing, structureSeparationSettings.separation(), structureGridX, structureGridZ);
+    private void scanRegion(long seed, BiomeProvider biomeSource, Structure<VillageConfig> village, StructureSeparationSettings structureSeperationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> missedChunks, Long2ReferenceOpenHashMap<LongSet> regionPositions, int activeMinGridX, int activeMinGridZ, int activeMaxGridX, int activeMaxGridZ) {
+        for (int structureGridX = activeMinGridX; structureGridX <= activeMaxGridX; structureGridX++) {
+            for (int structureGridZ = activeMinGridZ; structureGridZ <= activeMaxGridZ; structureGridZ++) {
+                long structureChunkPos = getStructureChunkPos(village, seed, structureSeperationSettings.salt(), new SharedSeedRandom(), spacing, structureSeperationSettings.separation(), structureGridX, structureGridZ);
 
                 int structureChunkPosX = ChunkPos.getX(structureChunkPos);
                 int structureChunkPosZ = ChunkPos.getZ(structureChunkPos);
@@ -160,7 +220,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                     continue;
                 }
 
-                ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeparationSettings, seed, new SharedSeedRandom(), structureChunkPosX, structureChunkPosZ);
+                ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeperationSettings, seed, new SharedSeedRandom(), structureChunkPosX, structureChunkPosZ);
 
                 if (chunkPos.x == structureChunkPosX && chunkPos.z == structureChunkPosZ && sampleAndTestChunkBiomesForStructure(structureChunkPosX, structureChunkPosZ, biomeSource, village)) {
                     regionPositions.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(structureChunkPos);
@@ -174,7 +234,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             }
         }
     }
-
 
     /**
      * If the node from the Path generator intersects the current chunk, generate.
