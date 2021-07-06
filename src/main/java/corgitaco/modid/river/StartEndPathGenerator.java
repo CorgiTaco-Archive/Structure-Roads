@@ -3,6 +3,9 @@ package corgitaco.modid.river;
 import corgitaco.modid.util.fastnoise.FastNoise;
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.nbt.INBT;
+import net.minecraft.nbt.ListNBT;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.SectionPos;
@@ -28,6 +31,16 @@ public class StartEndPathGenerator {
     private final BlockPos startPos;
     private final BlockPos endPos;
     private final int distanceBetweenNodes;
+
+
+    public StartEndPathGenerator(List<Node> nodes, Long2ObjectArrayMap<List<Node>> fastNodes, FastNoise noise, BlockPos startPos, BlockPos endPos, int distanceBetweenNodes) {
+        this.nodes = nodes;
+        this.fastNodes = fastNodes;
+        this.noise = noise;
+        this.startPos = startPos;
+        this.endPos = endPos;
+        this.distanceBetweenNodes = distanceBetweenNodes;
+    }
 
     public StartEndPathGenerator(FastNoise noise, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, int distanceBetweenNodes) {
         this.noise = noise;
@@ -94,6 +107,79 @@ public class StartEndPathGenerator {
         this.fastNodes = null;
     }
 
+    public CompoundNBT write() {
+        CompoundNBT nbt = new CompoundNBT();
+        nbt.putInt("seed", this.noise.GetSeed());
+        nbt.putInt("distanceBetweenNodes", this.distanceBetweenNodes);
+        nbt.putIntArray("startPos", writeBlockPos(this.startPos));
+        nbt.putIntArray("endPos", writeBlockPos(this.endPos));
+
+        ListNBT fastNodes = new ListNBT();
+        this.fastNodes.forEach((key, blockPosList) -> {
+            CompoundNBT tag = new CompoundNBT();
+            tag.putLong("chunkPos", key);
+            ListNBT nodes = new ListNBT();
+            for (Node node : blockPosList) {
+                CompoundNBT nodeTag = new CompoundNBT();
+                nodeTag.putIntArray("pos", writeBlockPos(node.getPos()));
+                nodeTag.putInt("idx", node.getIdx());
+                nodeTag.putInt("generated", node.getGeneratedForNode());
+                nodes.add(nodeTag);
+            }
+            tag.put("nodes", nodes);
+            fastNodes.add(tag);
+        });
+
+        nbt.put("fastNodes", fastNodes);
+
+        return nbt;
+    }
+
+    public static StartEndPathGenerator read(CompoundNBT readTag) {
+        Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
+        ArrayList<Node> allNodes = new ArrayList<>();
+
+        ListNBT readFastNodes = readTag.getList("fastNodes", 10);
+        int distanceBetweenNodes = readTag.getInt("distanceBetweenNodes");
+        int seed = readTag.getInt("seed");
+
+        BlockPos startPos = getBlockPos(readTag.getIntArray("startPos"));
+        BlockPos endPos = getBlockPos(readTag.getIntArray("endPos"));
+
+        for (INBT rawNbt : readFastNodes) {
+            CompoundNBT readFastNode = (CompoundNBT) rawNbt;
+
+            long chunkPos = readFastNode.getLong("chunkPos");
+
+            ListNBT readNodes = readTag.getList("nodes", 10);
+
+            List<Node> nodes = new ArrayList<>();
+
+            for (INBT rawNodeNbt : readNodes) {
+                CompoundNBT readNode = (CompoundNBT) rawNodeNbt;
+
+                BlockPos.Mutable pos = new BlockPos.Mutable().set(getBlockPos(readNode.getIntArray("pos")));
+
+                int index = readNode.getInt("idx");
+                int generated = readNode.getInt("generated");
+
+                Node nbtNode = new Node(pos, index, generated);
+                nodes.add(nbtNode);
+                allNodes.add(nbtNode);
+            }
+            fastNodes.put(chunkPos, nodes);
+        }
+
+        return new StartEndPathGenerator(allNodes, fastNodes, WorldStructureAwarePathGenerator.createNoise(seed), startPos, endPos, distanceBetweenNodes);
+    }
+
+    public int[] writeBlockPos(BlockPos pos) {
+        return new int[]{pos.getX(), pos.getY(), pos.getZ()};
+    }
+
+    public static BlockPos getBlockPos(int[] posArray) {
+        return new BlockPos(posArray[0], posArray[1], posArray[2]);
+    }
 
     private BlockPos.Mutable getNextPosAngled(Node prevNode, float angle) {
 //        System.out.println(angle);
@@ -171,6 +257,11 @@ public class StartEndPathGenerator {
         private final BlockPos.Mutable pos;
         private int heightAtLocation = 0;
         private int generatedForNode;
+
+        private Node(BlockPos.Mutable pos, int idx, int generatedForNode) {
+            this(pos, idx);
+            this.generatedForNode = generatedForNode;
+        }
 
         private Node(BlockPos.Mutable pos, int idx) {
             this.pos = pos;

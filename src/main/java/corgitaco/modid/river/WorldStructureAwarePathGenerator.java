@@ -1,6 +1,7 @@
 package corgitaco.modid.river;
 
 import com.mojang.serialization.Codec;
+import corgitaco.modid.Main;
 import corgitaco.modid.mixin.access.ChunkManagerAccess;
 import corgitaco.modid.mixin.access.StructureAccess;
 import corgitaco.modid.util.BiomeUtils;
@@ -53,14 +54,12 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         super(codec);
     }
 
-    private static long seed;
-
-    private final Map<World, Long2ReferenceOpenHashMap<LongSet>> missedChunks = new Object2ObjectArrayMap<>();
     private final Map<World, Long2ReferenceOpenHashMap<LongSet>> structurePositions = new Object2ObjectArrayMap<>();
     private final Map<World, Long2IntArrayMap> structureChunkPosToConnectedPathCount = new Object2ObjectArrayMap<>();
     private final Map<World, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
     private final Map<World, Long2LongArrayMap> successPairPositionsLookup = new Object2ObjectArrayMap<>();
-    private final Map<ServerWorld, Path> worldStructureFileCache = new Object2ObjectArrayMap<>();
+    private final Map<ServerWorld, Path> worldStructuresCache = new Object2ObjectArrayMap<>();
+    private final Map<ServerWorld, Path> worldGeneratorsCache = new Object2ObjectArrayMap<>();
 
     public static long regionLong(int regionX, int regionZ) {
         return (long) regionX & 4294967295L | ((long) regionZ & 4294967295L) << 32;
@@ -97,14 +96,26 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         int chunkX = SectionPos.blockToSectionCoord(pos.getX());
         int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
+        long currentChunk = ChunkPos.asLong(chunkX, chunkZ);
 
         int currentRegionX = chunkToRegion(chunkX);
         int currentRegionZ = chunkToRegion(chunkZ);
-
         long currentRegion = regionLong(chunkToRegion(chunkX), chunkToRegion(chunkZ));
 
-        Path structureStorageDir = this.worldStructureFileCache.computeIfAbsent(serverLevel, (level) -> {
-            Path storageFolder = ((ChunkManagerAccess) level.getChunkSource().chunkMap).getStorageFolder().toPath().resolve("structures");
+        Path structureStorageDir = this.worldStructuresCache.computeIfAbsent(serverLevel, (level) -> {
+            Path storageFolder = ((ChunkManagerAccess) level.getChunkSource().chunkMap).getStorageFolder().toPath().resolve(Main.MOD_ID).resolve("structures");
+            if (!storageFolder.toFile().exists()) {
+                try {
+                    Files.createDirectories(storageFolder);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            return storageFolder;
+        });
+
+        Path generatorStorageDir = this.worldGeneratorsCache.computeIfAbsent(serverLevel, (level) -> {
+            Path storageFolder = ((ChunkManagerAccess) level.getChunkSource().chunkMap).getStorageFolder().toPath().resolve(Main.MOD_ID).resolve("generators");
             if (!storageFolder.toFile().exists()) {
                 try {
                     Files.createDirectories(storageFolder);
@@ -122,7 +133,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         StructureSeparationSettings structureSeperationSettings = generator.getSettings().structureConfig().get(village);
         int spacing = structureSeperationSettings.spacing();
 
-        Long2ReferenceOpenHashMap<LongSet> missedChunks = this.missedChunks.computeIfAbsent(serverLevel, (level) -> new Long2ReferenceOpenHashMap<>());
         Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
         Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
         Long2IntArrayMap structureChunkPosToConnectedPathCount = this.structureChunkPosToConnectedPathCount.computeIfAbsent(serverLevel, (level1) -> new Long2IntArrayMap());
@@ -142,13 +152,12 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                         int activeMaxChunkX = regionToMaxChunk(regionX);
                         int activeMaxChunkZ = regionToMaxChunk(regionZ);
 
-
                         int activeMinGridX = Math.floorDiv(activeMinChunkX, spacing);
                         int activeMinGridZ = Math.floorDiv(activeMinChunkZ, spacing);
                         int activeMaxGridX = Math.floorDiv(activeMaxChunkX, spacing);
                         int activeMaxGridZ = Math.floorDiv(activeMaxChunkZ, spacing);
 
-                        scanRegion(seed, biomeSource, village, structureSeperationSettings, spacing, missedChunks, regionPositions, activeMinGridX, activeMinGridZ, activeMaxGridX, activeMaxGridZ);
+                        scanRegion(seed, biomeSource, village, structureSeperationSettings, spacing, regionPositions, activeMinGridX, activeMinGridZ, activeMaxGridX, activeMaxGridZ);
 
                         saveNewRegion(regionPositions, village, activeRegion, file);
                     } else {
@@ -157,10 +166,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                 }
             }
         }
-
-
-        long chunkKey = ChunkPos.asLong(chunkX, chunkZ);
-
 
         if (regionPositions.containsKey(currentRegion)) {
             LongSet regionStructurePositions = regionPositions.get(currentRegion);
@@ -173,8 +178,8 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.get(currentRegion);
 
             for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
-                if (startEndPathGenerator.getNodeChunkPositions().contains(chunkKey)) {
-                    for (StartEndPathGenerator.Node node : startEndPathGenerator.getNodesForChunk(chunkKey)) {
+                if (startEndPathGenerator.getNodeChunkPositions().contains(currentChunk)) {
+                    for (StartEndPathGenerator.Node node : startEndPathGenerator.getNodesForChunk(currentChunk)) {
                         generateForNode(worldRegion, chunkX, chunkZ, node, startEndPathGenerator);
                     }
                 }
@@ -212,7 +217,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     /**
      * Creates the cache of all structure positions for the given region
      */
-    private void scanRegion(long seed, BiomeProvider biomeSource, Structure<VillageConfig> village, StructureSeparationSettings structureSeparationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> missedChunks, Long2ReferenceOpenHashMap<LongSet> regionPositions, int activeMinGridX, int activeMinGridZ, int activeMaxGridX, int activeMaxGridZ) {
+    private void scanRegion(long seed, BiomeProvider biomeSource, Structure<VillageConfig> village, StructureSeparationSettings structureSeparationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> regionPositions, int activeMinGridX, int activeMinGridZ, int activeMaxGridX, int activeMaxGridZ) {
         for (int structureGridX = activeMinGridX; structureGridX <= activeMaxGridX; structureGridX++) {
             for (int structureGridZ = activeMinGridZ; structureGridZ <= activeMaxGridZ; structureGridZ++) {
                 long structureChunkPos = getStructureChunkPos(village, seed, structureSeparationSettings.salt(), new SharedSeedRandom(), spacing, structureSeparationSettings.separation(), structureGridX, structureGridZ);
@@ -222,21 +227,10 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
                 long structureRegionLong = regionLong(chunkToRegion(structureChunkPosX), chunkToRegion(structureChunkPosZ));
 
-                // TODO: Figure out why we have to check the potential feature chunk again... This should always be guaranteed!
-                if (missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).contains(structureChunkPos)) {
-                    continue;
-                }
-
                 ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeparationSettings, seed, new SharedSeedRandom(), structureChunkPosX, structureChunkPosZ);
 
                 if (chunkPos.x == structureChunkPosX && chunkPos.z == structureChunkPosZ && sampleAndTestChunkBiomesForStructure(structureChunkPosX, structureChunkPosZ, biomeSource, village)) {
                     regionPositions.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(structureChunkPos);
-                } else {
-                    if (missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).size() > 5000) {
-                        missedChunks.clear();
-                    }
-
-                    missedChunks.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(structureChunkPos);
                 }
             }
         }
@@ -317,11 +311,11 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         int pathCountEndStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(endStructurePos, structurePos -> 0);
 
         if (connectPathCountForStructure > 2) {
-            startStructurePos = acquireNewStructurePos(rand, regionStructurePositions, startStructurePos);
+            startStructurePos = acquireNewStructurePos(rand, regionStructurePositions);
         }
 
         if (pathCountEndStructurePos > 2) {
-            endStructurePos = acquireNewStructurePos(rand, regionStructurePositions, endStructurePos);
+            endStructurePos = acquireNewStructurePos(rand, regionStructurePositions);
         }
 
         int startX = ChunkPos.getX(startStructurePos);
@@ -387,11 +381,9 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return false;
     }
 
-    private long acquireNewStructurePos(Random rand, LongSet regionStructurePositions, long structurePos) {
-        regionStructurePositions.remove(structurePos);
+    private long acquireNewStructurePos(Random rand, LongSet regionStructurePositions) {
         long[] structurePositionsForRegion = regionStructurePositions.toLongArray();
-        structurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
-        return structurePos;
+        return structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
     }
 
     public static FastNoise createNoise(int seed) {
