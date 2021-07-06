@@ -8,7 +8,6 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.SectionPos;
 import net.minecraft.util.math.vector.Vector2f;
 import net.minecraft.util.math.vector.Vector3i;
-import net.minecraft.world.ISeedReader;
 import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.Heightmap;
 
@@ -26,14 +25,20 @@ public class StartEndPathGenerator {
     private static float minNoise = 100000;
     private static float maxNoise = -292929292;
     private final FastNoise noise;
+    private final BlockPos startPos;
+    private final BlockPos endPos;
+    private final int distanceBetweenNodes;
 
-    public StartEndPathGenerator(FastNoise noise, ISeedReader world, BlockPos startPos, BlockPos endPos, ChunkGenerator generator, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance) {
+    public StartEndPathGenerator(FastNoise noise, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, int distanceBetweenNodes) {
         this.noise = noise;
+        this.startPos = startPos;
+        this.endPos = endPos;
+        this.distanceBetweenNodes = distanceBetweenNodes;
         List<Node> nodes = new ArrayList<>();
         Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
 
         nodes.add(new Node(startPos.mutable(), 0));
-        int distanceInNodes = maxDistance / 5;
+        int distanceInNodes = maxDistance / distanceBetweenNodes;
 
 
         for (int i = 1; i < distanceInNodes; i++) {
@@ -108,12 +113,12 @@ public class StartEndPathGenerator {
     // Angle 3 = North(Negative Z)
 
     private Vector3i getAngleOffset(float angle) {
-        return getAngleOffset(angle, 5);
+        return getAngleOffset(angle, this.distanceBetweenNodes);
     }
 
 
     public Vector3i getAngleOffset(float angle, int length) {
-        Vector2f dAngle = get2DAngle(angle, 5);
+        Vector2f dAngle = get2DAngle(angle, length);
         return new Vector3i(dAngle.x, 0, dAngle.y);
     }
 
@@ -156,12 +161,16 @@ public class StartEndPathGenerator {
         return noise;
     }
 
+    public int getDistanceBetweenNodes() {
+        return distanceBetweenNodes;
+    }
+
     static class Node {
 
         private final int idx;
         private final BlockPos.Mutable pos;
         private int heightAtLocation = 0;
-        private boolean generatedForNext;
+        private int generatedForNode;
 
         private Node(BlockPos.Mutable pos, int idx) {
             this.pos = pos;
@@ -182,18 +191,18 @@ public class StartEndPathGenerator {
 
         public int getHeightAtLocation(ChunkGenerator generator) {
             if (heightAtLocation == 0) {
-                return generator.getBaseHeight(pos.getX(), pos.getZ(), Heightmap.Type.WORLD_SURFACE_WG);
+                heightAtLocation = generator.getBaseHeight(pos.getX(), pos.getZ(), Heightmap.Type.WORLD_SURFACE_WG);
             }
 
             return heightAtLocation;
         }
 
-        public boolean isGeneratedForNext() {
-            return generatedForNext;
+        public int getGeneratedForNode() {
+            return generatedForNode;
         }
 
-        public void setGeneratedForNext(boolean generatedForNext) {
-            this.generatedForNext = generatedForNext;
+        public void setGeneratedForNode(int generatedForNode) {
+            this.generatedForNode = generatedForNode;
         }
     }
 }
