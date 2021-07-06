@@ -6,7 +6,9 @@ import corgitaco.modid.mixin.access.ChunkManagerAccess;
 import corgitaco.modid.mixin.access.StructureAccess;
 import corgitaco.modid.util.BiomeUtils;
 import corgitaco.modid.util.fastnoise.FastNoise;
-import it.unimi.dsi.fastutil.longs.*;
+import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArraySet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import net.minecraft.block.Blocks;
 import net.minecraft.nbt.CompoundNBT;
@@ -55,11 +57,10 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     }
 
     private final Map<World, Long2ReferenceOpenHashMap<LongSet>> structurePositions = new Object2ObjectArrayMap<>();
-    private final Map<World, Long2IntArrayMap> structureChunkPosToConnectedPathCount = new Object2ObjectArrayMap<>();
     private final Map<World, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
-    private final Map<World, Long2LongArrayMap> successPairPositionsLookup = new Object2ObjectArrayMap<>();
     private final Map<ServerWorld, Path> worldStructuresCache = new Object2ObjectArrayMap<>();
     private final Map<ServerWorld, Path> worldGeneratorsCache = new Object2ObjectArrayMap<>();
+    private final Map<World, LongArraySet> processedRegions = new Object2ObjectArrayMap<>();
 
     public static long regionLong(int regionX, int regionZ) {
         return (long) regionX & 4294967295L | ((long) regionZ & 4294967295L) << 32;
@@ -135,8 +136,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
         Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
-        Long2IntArrayMap structureChunkPosToConnectedPathCount = this.structureChunkPosToConnectedPathCount.computeIfAbsent(serverLevel, (level1) -> new Long2IntArrayMap());
-        Long2LongArrayMap successPairPositionsLookup = this.successPairPositionsLookup.computeIfAbsent(serverLevel, (level) -> new Long2LongArrayMap());
+        LongArraySet processedRegions = this.processedRegions.computeIfAbsent(serverLevel, (level) -> new LongArraySet());
 
         for (int regionX = currentRegionX - searchRangeInRegions; regionX < currentRegionX + searchRangeInRegions; regionX++) {
             for (int regionZ = currentRegionZ - searchRangeInRegions; regionZ < currentRegionZ + searchRangeInRegions; regionZ++) {
@@ -167,12 +167,48 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             }
         }
 
-        if (regionPositions.containsKey(currentRegion)) {
+        if (regionPositions.containsKey(currentRegion) && !processedRegions.contains(currentRegion)) {
             LongSet regionStructurePositions = regionPositions.get(currentRegion);
             if (!regionStructurePositions.isEmpty()) {
-                addPathGenerators(worldRegion, generator, rand, seed, successPairPositionsLookup, regionPathGenerators, structureChunkPosToConnectedPathCount, structureSeperationSettings, currentRegion, regionStructurePositions);
+                long[] structurePositions = regionStructurePositions.toLongArray();
+
+                for (int idx = 0; idx < structurePositions.length; idx++) {
+                    long startStructurePos = structurePositions[idx];
+                    for (int idx1 = 0; idx1 < structurePositions.length; idx1++) {
+                        if (idx == idx1) {
+                            continue;
+                        }
+
+                        long endStructurePos = structurePositions[idx1];
+
+
+                        int startX = ChunkPos.getX(startStructurePos);
+                        int startZ = ChunkPos.getZ(startStructurePos);
+                        BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(startX), 0, SectionPos.sectionToBlockCoord(startZ));
+
+                        int endX = ChunkPos.getX(endStructurePos);
+                        int endZ = ChunkPos.getZ(endStructurePos);
+                        BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(endX), 0, SectionPos.sectionToBlockCoord(endZ));
+
+
+                        SharedSeedRandom random = new SharedSeedRandom();
+
+                        random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
+                        ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
+
+                        long key = startStructurePos + endStructurePos;
+                        StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, createNoise(random.nextInt()), startStructurePos, endStructurePos, startPos, endPos);
+                        if (startEndPathGenerator != null) {
+                            startEndPathGenerators.add(startEndPathGenerator);
+                            Main.LOGGER.info(String.format("/tp %s ~ %s", startPos.getX(), startPos.getZ()));
+                        } else {
+                        }
+                    }
+                }
             }
+            processedRegions.add(currentRegion);
         }
+
 
         if (regionPathGenerators.containsKey(currentRegion)) {
             ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.get(currentRegion);
@@ -289,55 +325,13 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
-    private void addPathGenerators(ISeedReader worldRegion, ChunkGenerator generator, Random rand, long seed, Long2LongArrayMap successPairPositionsLookup, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, Long2IntArrayMap structureChunkPosToConnectedPathCount, StructureSeparationSettings structureSeperationSettings, long regionLong, LongSet regionStructurePositions) {
-        if (regionStructurePositions.size() < 2) {
-            return;
-        }
-
-        long[] structurePositionsForRegion = regionStructurePositions.toLongArray();
-
-        long startStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
-        int connectPathCountForStructure = structureChunkPosToConnectedPathCount.computeIfAbsent(startStructurePos, structurePos -> 0);
-
-        long endStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
-
-        while (structurePositionsForRegion.length - 1 > 2 && (startStructurePos == endStructurePos) ||
-                (successPairPositionsLookup.containsKey(endStructurePos) && successPairPositionsLookup.get(endStructurePos) == startStructurePos) ||
-                (successPairPositionsLookup.containsKey(startStructurePos) && successPairPositionsLookup.get(startStructurePos) == endStructurePos)) {
-
-            endStructurePos = structurePositionsForRegion[rand.nextInt(structurePositionsForRegion.length - 1)];
-        }
-
-        int pathCountEndStructurePos = structureChunkPosToConnectedPathCount.computeIfAbsent(endStructurePos, structurePos -> 0);
-
-        if (connectPathCountForStructure > 2) {
-            startStructurePos = acquireNewStructurePos(rand, regionStructurePositions);
-        }
-
-        if (pathCountEndStructurePos > 2) {
-            endStructurePos = acquireNewStructurePos(rand, regionStructurePositions);
-        }
-
-        int startX = ChunkPos.getX(startStructurePos);
-        int startZ = ChunkPos.getZ(startStructurePos);
-        BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(startX), 0, SectionPos.sectionToBlockCoord(startZ));
-
-        int endX = ChunkPos.getX(endStructurePos);
-        int endZ = ChunkPos.getZ(endStructurePos);
-        BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(endX), 0, SectionPos.sectionToBlockCoord(endZ));
-
-        SharedSeedRandom random = new SharedSeedRandom();
-
-        random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
-
-        addPathGenerator(worldRegion, createNoise(random.nextInt()), successPairPositionsLookup, regionPathGenerators, structureChunkPosToConnectedPathCount, regionLong, startStructurePos, connectPathCountForStructure, endStructurePos, pathCountEndStructurePos, startPos, endPos);
-    }
-
-
     /**
      * Add a path generator to this region's cache and cache how many times a given position has succeeded.
      */
-    private void addPathGenerator(ISeedReader worldRegion, FastNoise noise, Long2LongArrayMap successPairPositionsLookup, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, Long2IntArrayMap structureChunkPosToConnectedPathCount, long regionLong, long startStructurePos, int connectPathCountForStructure, long endStructurePos, int pathCountEndStructurePos, BlockPos startPos, BlockPos endPos) {
+    @Nullable
+    private StartEndPathGenerator getPathGenerator(ISeedReader worldRegion, FastNoise noise, long startStructurePos, long endStructurePos, BlockPos startPos, BlockPos endPos) {
+        float degreesRotated = 0.0F;
+
         StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos))), node -> {
             BlockPos nodePos = node.getPos();
             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
@@ -345,17 +339,21 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
             return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
 
-        }, 500000, 5);
+        }, 50000, degreesRotated, 5);
 
-        if (startEndPathGenerator.exists()) {
-            System.out.printf("/tp %s ~ %s", startPos.getX(), startPos.getZ());
-            successPairPositionsLookup.put(startStructurePos, endStructurePos);
+        double degrees30 = Math.PI / 12;
+        while (!startEndPathGenerator.exists() && degreesRotated <= Math.PI - degrees30) {
+            degreesRotated += degrees30;
+            startEndPathGenerator = new StartEndPathGenerator(noise, startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos))), node -> {
+                BlockPos nodePos = node.getPos();
+                int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
+                int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
 
-            regionPathGenerators.computeIfAbsent(regionLong, (long2) -> new ArrayList<>()).add(startEndPathGenerator);
+                return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
 
-            structureChunkPosToConnectedPathCount.put(startStructurePos, connectPathCountForStructure + 1);
-            structureChunkPosToConnectedPathCount.put(endStructurePos, pathCountEndStructurePos + 1);
+            }, 50000, degreesRotated, 5);
         }
+        return !startEndPathGenerator.exists() ? null : startEndPathGenerator;
     }
 
     /**

@@ -42,7 +42,7 @@ public class StartEndPathGenerator {
         this.distanceBetweenNodes = distanceBetweenNodes;
     }
 
-    public StartEndPathGenerator(FastNoise noise, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, int distanceBetweenNodes) {
+    public StartEndPathGenerator(FastNoise noise, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, float generatorRotation, int distanceBetweenNodes) {
         this.noise = noise;
         this.startPos = startPos;
         this.endPos = endPos;
@@ -72,7 +72,7 @@ public class StartEndPathGenerator {
             float noiseAngle = angle * 5;
 
 
-            BlockPos.Mutable pos = getNextPosAngled(prevNode, noiseAngle);
+            BlockPos.Mutable pos = getNextPosAngled(prevNode, noiseAngle + generatorRotation);
             Node nextNode = new Node(pos, i);
 
             // 0.5F is the equivalent of 30 degrees in this case
@@ -242,6 +242,8 @@ public class StartEndPathGenerator {
     public BlockPos getStartPos() {
         return this.nodes.get(0).getPos();
     }
+
+
 
     public FastNoise getNoise() {
         return noise;
