@@ -62,7 +62,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     private final Map<World, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
     private final Map<ServerWorld, Path> worldStructuresCache = new Object2ObjectArrayMap<>();
     private final Map<ServerWorld, Path> worldGeneratorsCache = new Object2ObjectArrayMap<>();
-    private final Map<World, LongArraySet> processedRegions = new Object2ObjectArrayMap<>();
 
     public static long regionLong(int regionX, int regionZ) {
         return (long) regionX & 4294967295L | ((long) regionZ & 4294967295L) << 32;
@@ -138,7 +137,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
         Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
-        LongArraySet processedRegions = this.processedRegions.computeIfAbsent(serverLevel, (level) -> new LongArraySet());
 
         for (int regionX = currentRegionX - searchRangeInRegions; regionX < currentRegionX + searchRangeInRegions; regionX++) {
             for (int regionZ = currentRegionZ - searchRangeInRegions; regionZ < currentRegionZ + searchRangeInRegions; regionZ++) {
