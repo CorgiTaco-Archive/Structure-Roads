@@ -219,7 +219,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                         if (startEndPathGenerator != null) {
                             startEndPathGenerators.add(startEndPathGenerator);
                             Main.LOGGER.info(String.format("/tp %s ~ %s", startPos.getX(), startPos.getZ()));
-                        } else {
                         }
                     }
                 }

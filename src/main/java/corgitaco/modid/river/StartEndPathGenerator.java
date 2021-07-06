@@ -24,9 +24,6 @@ import java.util.function.Predicate;
 public class StartEndPathGenerator {
     private final List<Node> nodes;
     private final Long2ObjectArrayMap<List<Node>> fastNodes;
-
-    private static float minNoise = 100000;
-    private static float maxNoise = -292929292;
     private final FastNoise noise;
     private final BlockPos startPos;
     private final BlockPos endPos;
@@ -56,31 +53,20 @@ public class StartEndPathGenerator {
 
         for (int i = 1; i < distanceInNodes; i++) {
             Node prevNode = nodes.get(i - 1);
-            float angle = noise.GetNoise(prevNode.getPos().getX(), 0, prevNode.getPos().getZ());
-
-
-            if (angle < minNoise) {
-                minNoise = angle;
-                System.out.println("Min noise: " + angle);
-            }
-
-            if (angle > maxNoise) {
-                maxNoise = angle;
-                System.out.println("Max noise: " + angle);
-            }
-
+            BlockPos.Mutable prevPos = prevNode.getPos();
+            float angle = noise.GetNoise(prevPos.getX(), 0, prevPos.getZ());
             float noiseAngle = angle * 5;
 
-
-            BlockPos.Mutable pos = getNextPosAngled(prevNode, noiseAngle + generatorRotation);
+            Vector3i angleOffset = getAngleOffset(noiseAngle);
+            BlockPos.Mutable pos = new BlockPos.Mutable(prevPos.getX() + angleOffset.getX(), prevPos.getY() + angleOffset.getY(), prevPos.getZ() + angleOffset.getZ());
             Node nextNode = new Node(pos, i);
 
             // 0.5F is the equivalent of 30 degrees in this case
             double degreesRotated = Math.PI / 12;
             while (isInvalid.test(nextNode)) {
-                Vector3i angleOffset = getAngleOffset((float) (noiseAngle + degreesRotated));
+                Vector3i rotatedAngleOffset = getAngleOffset((float) (noiseAngle + degreesRotated));
                 degreesRotated += Math.PI / 12;
-                nextNode.getPos().setWithOffset(prevNode.getPos(), angleOffset.getX(), 0, angleOffset.getZ());
+                nextNode.getPos().set(prevPos.getX() + rotatedAngleOffset.getX(), 0, prevPos.getZ() + rotatedAngleOffset.getZ());
 
                 if (degreesRotated >= Math.PI) {
                     this.nodes = null;
@@ -181,18 +167,6 @@ public class StartEndPathGenerator {
         return new BlockPos(posArray[0], posArray[1], posArray[2]);
     }
 
-    private BlockPos.Mutable getNextPosAngled(Node prevNode, float angle) {
-//        System.out.println(angle);
-        BlockPos previousNodePos = prevNode.getPos();
-        BlockPos offset = getAngleOffsetPos(angle, previousNodePos);
-        return new BlockPos.Mutable().set(offset);
-    }
-
-    private BlockPos getAngleOffsetPos(float angle, BlockPos previousNodePos) {
-        Vector3i vecAngle = getAngleOffset(angle);
-        return previousNodePos.offset(vecAngle);
-    }
-
     // Angle -1.5 = West(Negative X)
     // Angle 0 = South(Positive Z)
     // Angle 1.5 = East(Positive X)
@@ -242,7 +216,6 @@ public class StartEndPathGenerator {
     public BlockPos getStartPos() {
         return this.nodes.get(0).getPos();
     }
-
 
 
     public FastNoise getNoise() {
