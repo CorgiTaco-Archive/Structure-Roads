@@ -168,7 +168,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
 
         if (regionPositions.containsKey(currentRegion) && !regionPathGenerators.containsKey(currentRegion)) {
-            String fileName = currentRegionX + "," + currentRegionX + ".2dr";
+            String fileName = currentRegionX + "," + currentRegionZ + ".2dr";
             File file = generatorStorageDir.resolve(fileName).toFile();
 
             if (!file.exists()) {
@@ -247,7 +247,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
                     random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
 
-                    StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, createNoise(random.nextInt()), startStructurePos, endStructurePos, startPos, endPos);
+                    StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, createNoise(random.nextInt()), startStructurePos, endStructurePos, startPos, endPos, startEndPathGenerators);
                     if (startEndPathGenerator != null) {
                         startEndPathGenerators.add(startEndPathGenerator);
                         Main.LOGGER.info(String.format("/tp %s ~ %s", startPos.getX(), startPos.getZ()));
@@ -312,7 +312,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         BlockPos.Mutable mutable = new BlockPos.Mutable().set(node.getPos());
         mutable.setY(worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, mutable.getX(), mutable.getZ()) - 1);
 
-        int size = 3;
+        int size = 2;
 
 
         List<StartEndPathGenerator.Node> nodes = pathGenerator.getNodes();
@@ -362,7 +362,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
      * Add a path generator to this region's cache and cache how many times a given position has succeeded.
      */
     @Nullable
-    private StartEndPathGenerator getPathGenerator(ISeedReader worldRegion, FastNoise noise, long startStructurePos, long endStructurePos, BlockPos startPos, BlockPos endPos) {
+    private StartEndPathGenerator getPathGenerator(ISeedReader worldRegion, FastNoise noise, long startStructurePos, long endStructurePos, BlockPos startPos, BlockPos endPos, List<StartEndPathGenerator> generators) {
         float degreesRotated = 0.0F;
 
         StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos))), node -> {
@@ -372,7 +372,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
             return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
 
-        }, 50000, degreesRotated, 5);
+        }, 5000, degreesRotated, 5);
 
         double degrees30 = Math.PI / 12;
         while (!startEndPathGenerator.exists() && degreesRotated <= Math.PI - degrees30) {
@@ -381,12 +381,22 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                 BlockPos nodePos = node.getPos();
                 int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
                 int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
+                long nodeChunk = ChunkPos.asLong(nodeChunkX, nodeChunkZ);
 
-                return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
+                return nodeChunk == endStructurePos || intersectsGeneratorPos(nodeChunk, generators);
 
-            }, 50000, degreesRotated, 5);
+            }, 5000, degreesRotated, 5);
         }
         return !startEndPathGenerator.exists() ? null : startEndPathGenerator;
+    }
+
+    private boolean intersectsGeneratorPos(long nodeChunk, List<StartEndPathGenerator> generators) {
+        for (StartEndPathGenerator generator : generators) {
+            if (generator.getNodeChunkPositions().contains(nodeChunk)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
