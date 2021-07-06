@@ -122,15 +122,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         StructureSeparationSettings structureSeperationSettings = generator.getSettings().structureConfig().get(village);
         int spacing = structureSeperationSettings.spacing();
 
-        int currentGridX = Math.floorDiv(chunkX, spacing);
-        int currentGridZ = Math.floorDiv(chunkZ, spacing);
-
-        int actualMinGridX = Math.floorDiv(chunkX - searchRangeInChunks, spacing);
-        int actualMinGridZ = Math.floorDiv(chunkZ - searchRangeInChunks, spacing);
-        int actualMaxGridX = Math.floorDiv(chunkX + searchRangeInChunks, spacing);
-        int actualMaxGridZ = Math.floorDiv(chunkZ + searchRangeInChunks, spacing);
-
-
         Long2ReferenceOpenHashMap<LongSet> missedChunks = this.missedChunks.computeIfAbsent(serverLevel, (level) -> new Long2ReferenceOpenHashMap<>());
         Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
         Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
@@ -141,7 +132,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             for (int regionZ = currentRegionZ - searchRangeInRegions; regionZ < currentRegionZ + searchRangeInRegions; regionZ++) {
                 long activeRegion = regionLong(regionX, regionZ);
 
-                if (!regionPathGenerators.containsKey(activeRegion)) {
+                if (!regionPositions.containsKey(activeRegion)) {
                     String fileName = regionX + "," + regionZ + ".2dr";
                     File file = structureStorageDir.resolve(fileName).toFile();
                     if (!file.exists()) {
@@ -160,6 +151,8 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                         scanRegion(seed, biomeSource, village, structureSeperationSettings, spacing, missedChunks, regionPositions, activeMinGridX, activeMinGridZ, activeMaxGridX, activeMaxGridZ);
 
                         saveNewRegion(regionPositions, activeRegion, file);
+                    } else {
+                        readRegion(regionPositions, activeRegion, file);
                     }
                 }
             }
@@ -189,6 +182,18 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
 
         return true;
+    }
+
+    private void readRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, long activeRegion, File file) {
+        try {
+            CompoundNBT readTag = CompressedStreamTools.read(file);
+            if (readTag.contains("structurePositions")) {
+                long[] structurePositions = readTag.getLongArray("structurePositions");
+                regionPositions.put(activeRegion, new LongArraySet(structurePositions));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private void saveNewRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, long activeRegion, File file) {
