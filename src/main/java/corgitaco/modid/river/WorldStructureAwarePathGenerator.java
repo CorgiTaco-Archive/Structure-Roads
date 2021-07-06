@@ -150,9 +150,9 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
                         scanRegion(seed, biomeSource, village, structureSeperationSettings, spacing, missedChunks, regionPositions, activeMinGridX, activeMinGridZ, activeMaxGridX, activeMaxGridZ);
 
-                        saveNewRegion(regionPositions, activeRegion, file);
+                        saveNewRegion(regionPositions, village, activeRegion, file);
                     } else {
-                        readRegion(regionPositions, activeRegion, file);
+                        readRegion(regionPositions, village, activeRegion, file);
                     }
                 }
             }
@@ -184,11 +184,12 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return true;
     }
 
-    private void readRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, long activeRegion, File file) {
+    private void readRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
+        String structureName = structure.getFeatureName() + "_positions";
         try {
             CompoundNBT readTag = CompressedStreamTools.read(file);
-            if (readTag.contains("structurePositions")) {
-                long[] structurePositions = readTag.getLongArray("structurePositions");
+            if (readTag.contains(structureName)) {
+                long[] structurePositions = readTag.getLongArray(structureName);
                 regionPositions.put(activeRegion, new LongArraySet(structurePositions));
             }
         } catch (IOException e) {
@@ -196,9 +197,10 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
-    private void saveNewRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, long activeRegion, File file) {
+    private void saveNewRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
+        String structureName = structure.getFeatureName() + "_positions";
         CompoundNBT nbt = new CompoundNBT();
-        nbt.putLongArray("structurePositions", regionPositions.get(activeRegion).toLongArray());
+        nbt.putLongArray(structureName, regionPositions.get(activeRegion).toLongArray());
         try {
             CompressedStreamTools.write(nbt, file);
         } catch (IOException e) {
@@ -210,10 +212,10 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     /**
      * Creates the cache of all structure positions for the given region
      */
-    private void scanRegion(long seed, BiomeProvider biomeSource, Structure<VillageConfig> village, StructureSeparationSettings structureSeperationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> missedChunks, Long2ReferenceOpenHashMap<LongSet> regionPositions, int activeMinGridX, int activeMinGridZ, int activeMaxGridX, int activeMaxGridZ) {
+    private void scanRegion(long seed, BiomeProvider biomeSource, Structure<VillageConfig> village, StructureSeparationSettings structureSeparationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> missedChunks, Long2ReferenceOpenHashMap<LongSet> regionPositions, int activeMinGridX, int activeMinGridZ, int activeMaxGridX, int activeMaxGridZ) {
         for (int structureGridX = activeMinGridX; structureGridX <= activeMaxGridX; structureGridX++) {
             for (int structureGridZ = activeMinGridZ; structureGridZ <= activeMaxGridZ; structureGridZ++) {
-                long structureChunkPos = getStructureChunkPos(village, seed, structureSeperationSettings.salt(), new SharedSeedRandom(), spacing, structureSeperationSettings.separation(), structureGridX, structureGridZ);
+                long structureChunkPos = getStructureChunkPos(village, seed, structureSeparationSettings.salt(), new SharedSeedRandom(), spacing, structureSeparationSettings.separation(), structureGridX, structureGridZ);
 
                 int structureChunkPosX = ChunkPos.getX(structureChunkPos);
                 int structureChunkPosZ = ChunkPos.getZ(structureChunkPos);
@@ -225,7 +227,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                     continue;
                 }
 
-                ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeperationSettings, seed, new SharedSeedRandom(), structureChunkPosX, structureChunkPosZ);
+                ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeparationSettings, seed, new SharedSeedRandom(), structureChunkPosX, structureChunkPosZ);
 
                 if (chunkPos.x == structureChunkPosX && chunkPos.z == structureChunkPosZ && sampleAndTestChunkBiomesForStructure(structureChunkPosX, structureChunkPosZ, biomeSource, village)) {
                     regionPositions.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(structureChunkPos);
