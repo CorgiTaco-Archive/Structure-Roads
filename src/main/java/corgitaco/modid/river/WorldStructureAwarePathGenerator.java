@@ -167,6 +167,25 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             }
         }
 
+        processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeperationSettings, regionPositions, regionPathGenerators, processedRegions);
+
+
+        if (regionPathGenerators.containsKey(currentRegion)) {
+            ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.get(currentRegion);
+
+            for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
+                if (startEndPathGenerator.getNodeChunkPositions().contains(currentChunk)) {
+                    for (StartEndPathGenerator.Node node : startEndPathGenerator.getNodesForChunk(currentChunk)) {
+                        generateForNode(worldRegion, chunkX, chunkZ, node, startEndPathGenerator);
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private void processPathGeneratorsForRegion(ISeedReader worldRegion, long seed, long currentRegion, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, LongArraySet processedRegions) {
         if (regionPositions.containsKey(currentRegion) && !processedRegions.contains(currentRegion)) {
             LongSet regionStructurePositions = regionPositions.get(currentRegion);
             if (!regionStructurePositions.isEmpty()) {
@@ -196,7 +215,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
                         random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
                         ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
 
-                        long key = startStructurePos + endStructurePos;
                         StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, createNoise(random.nextInt()), startStructurePos, endStructurePos, startPos, endPos);
                         if (startEndPathGenerator != null) {
                             startEndPathGenerators.add(startEndPathGenerator);
@@ -208,21 +226,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             }
             processedRegions.add(currentRegion);
         }
-
-
-        if (regionPathGenerators.containsKey(currentRegion)) {
-            ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.get(currentRegion);
-
-            for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
-                if (startEndPathGenerator.getNodeChunkPositions().contains(currentChunk)) {
-                    for (StartEndPathGenerator.Node node : startEndPathGenerator.getNodesForChunk(currentChunk)) {
-                        generateForNode(worldRegion, chunkX, chunkZ, node, startEndPathGenerator);
-                    }
-                }
-            }
-        }
-
-        return true;
     }
 
     private void readRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
