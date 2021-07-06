@@ -13,6 +13,8 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import net.minecraft.block.Blocks;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.nbt.CompressedStreamTools;
+import net.minecraft.nbt.INBT;
+import net.minecraft.nbt.ListNBT;
 import net.minecraft.util.SharedSeedRandom;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
@@ -167,7 +169,40 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
             }
         }
 
-        processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeperationSettings, regionPositions, regionPathGenerators, processedRegions);
+        if (regionPositions.containsKey(currentRegion) && !regionPathGenerators.containsKey(currentRegion)) {
+            String fileName = currentRegionX + "," + currentRegionX + ".2dr";
+            File file = generatorStorageDir.resolve(fileName).toFile();
+
+            if (!file.exists()) {
+                CompoundNBT nbt = new CompoundNBT();
+                ListNBT generators = new ListNBT();
+                List<StartEndPathGenerator> startEndPathGenerators = processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeperationSettings, regionPositions, regionPathGenerators);
+                for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
+                    generators.add(startEndPathGenerator.write());
+                }
+
+                nbt.put("generators", generators);
+
+                try {
+                    CompressedStreamTools.write(nbt, file);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
+                try {
+                    CompoundNBT readTag = CompressedStreamTools.read(file);
+                    ListNBT generators = readTag.getList("generators", 10);
+
+                    for (INBT inbt : generators) {
+                        startEndPathGenerators.add(StartEndPathGenerator.read((CompoundNBT) inbt));
+                    }
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
 
 
         if (regionPathGenerators.containsKey(currentRegion)) {
@@ -185,46 +220,44 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return true;
     }
 
-    private void processPathGeneratorsForRegion(ISeedReader worldRegion, long seed, long currentRegion, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, LongArraySet processedRegions) {
-        if (regionPositions.containsKey(currentRegion) && !processedRegions.contains(currentRegion)) {
-            LongSet regionStructurePositions = regionPositions.get(currentRegion);
-            if (!regionStructurePositions.isEmpty()) {
-                long[] structurePositions = regionStructurePositions.toLongArray();
+    private List<StartEndPathGenerator> processPathGeneratorsForRegion(ISeedReader worldRegion, long seed, long currentRegion, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators) {
+        ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
+        LongSet regionStructurePositions = regionPositions.get(currentRegion);
+        if (!regionStructurePositions.isEmpty()) {
+            long[] structurePositions = regionStructurePositions.toLongArray();
 
-                for (int idx = 0; idx < structurePositions.length; idx++) {
-                    long startStructurePos = structurePositions[idx];
-                    for (int idx1 = 0; idx1 < structurePositions.length; idx1++) {
-                        if (idx == idx1) {
-                            continue;
-                        }
+            for (int idx = 0; idx < structurePositions.length; idx++) {
+                long startStructurePos = structurePositions[idx];
+                for (int idx1 = 0; idx1 < structurePositions.length; idx1++) {
+                    if (idx == idx1) {
+                        continue;
+                    }
 
-                        long endStructurePos = structurePositions[idx1];
-
-
-                        int startX = ChunkPos.getX(startStructurePos);
-                        int startZ = ChunkPos.getZ(startStructurePos);
-                        BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(startX), 0, SectionPos.sectionToBlockCoord(startZ));
-
-                        int endX = ChunkPos.getX(endStructurePos);
-                        int endZ = ChunkPos.getZ(endStructurePos);
-                        BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(endX), 0, SectionPos.sectionToBlockCoord(endZ));
+                    long endStructurePos = structurePositions[idx1];
 
 
-                        SharedSeedRandom random = new SharedSeedRandom();
+                    int startX = ChunkPos.getX(startStructurePos);
+                    int startZ = ChunkPos.getZ(startStructurePos);
+                    BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(startX), 0, SectionPos.sectionToBlockCoord(startZ));
 
-                        random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
-                        ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
+                    int endX = ChunkPos.getX(endStructurePos);
+                    int endZ = ChunkPos.getZ(endStructurePos);
+                    BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(endX), 0, SectionPos.sectionToBlockCoord(endZ));
 
-                        StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, createNoise(random.nextInt()), startStructurePos, endStructurePos, startPos, endPos);
-                        if (startEndPathGenerator != null) {
-                            startEndPathGenerators.add(startEndPathGenerator);
-                            Main.LOGGER.info(String.format("/tp %s ~ %s", startPos.getX(), startPos.getZ()));
-                        }
+
+                    SharedSeedRandom random = new SharedSeedRandom();
+
+                    random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
+
+                    StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, createNoise(random.nextInt()), startStructurePos, endStructurePos, startPos, endPos);
+                    if (startEndPathGenerator != null) {
+                        startEndPathGenerators.add(startEndPathGenerator);
+                        Main.LOGGER.info(String.format("/tp %s ~ %s", startPos.getX(), startPos.getZ()));
                     }
                 }
             }
-            processedRegions.add(currentRegion);
         }
+        return startEndPathGenerators;
     }
 
     private void readRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
