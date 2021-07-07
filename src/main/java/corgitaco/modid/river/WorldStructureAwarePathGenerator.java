@@ -15,6 +15,7 @@ import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.INBT;
 import net.minecraft.nbt.ListNBT;
+import net.minecraft.util.Direction;
 import net.minecraft.util.SharedSeedRandom;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
@@ -49,6 +50,8 @@ import java.util.Map;
 import java.util.Random;
 
 public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
+
+    public static final boolean DEBUG_ANGLES = true;
 
     public static final Feature<NoFeatureConfig> PATH = BiomeUtils.createFeature("structure_aware_path", new WorldStructureAwarePathGenerator(NoFeatureConfig.CODEC));
 
@@ -335,6 +338,10 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         int nodeZ = node.getPos().getZ();
 
         BlockPos.Mutable mutable1 = new BlockPos.Mutable();
+        if (DEBUG_ANGLES) {
+            debugAngles(worldRegion, pathGenerator, node, nodeX, nodeZ, mutable1);
+        }
+
         for (int i = node.getGeneratedForNode(); i <= pathGenerator.getDistanceBetweenNodes(); i++) {
             Vector3i angleOffset = pathGenerator.getAngleOffset(pathGenerator.getNoise().GetNoise(nodeX, 0, nodeZ), i);
             int subNodeX = nodeX + angleOffset.getX();
@@ -358,6 +365,30 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
+    private void debugAngles(ISeedReader worldRegion, StartEndPathGenerator pathGenerator, StartEndPathGenerator.Node node, int nodeX, int nodeZ, BlockPos.Mutable mutable1) {
+        if (node.getIdx() % 5 == 0) {
+
+            mutable1.set(nodeX, worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, nodeX, nodeZ) - 1, nodeZ);
+            for (int height = 0; height < 7; height++) {
+                worldRegion.setBlock(mutable1.move(Direction.UP), Blocks.EMERALD_BLOCK.defaultBlockState(), 2);
+            }
+
+            double degreesRotated = StartEndPathGenerator.DEGREE_ROTATION;
+            while (degreesRotated <= Math.PI * 2) {
+                Vector3i angleOffset = pathGenerator.getAngleOffset((float) (pathGenerator.getNoise().GetNoise(nodeX, 0, nodeZ) + degreesRotated));
+
+                int subNodeX = nodeX + angleOffset.getX();
+                int subNodeZ = nodeZ + angleOffset.getZ();
+
+                mutable1.set(subNodeX, worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, subNodeX, subNodeZ) - 1, subNodeZ);
+                for (int height = 0; height < 7; height++) {
+                    worldRegion.setBlock(mutable1.move(Direction.UP), Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
+                }
+                degreesRotated += StartEndPathGenerator.DEGREE_ROTATION;
+            }
+        }
+    }
+
     /**
      * Add a path generator to this region's cache and cache how many times a given position has succeeded.
      */
@@ -374,9 +405,8 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         }, 5000, degreesRotated, 5);
 
-        double degrees30 = Math.PI / 12;
-        while (!startEndPathGenerator.exists() && degreesRotated <= Math.PI - degrees30) {
-            degreesRotated += degrees30;
+        while (!startEndPathGenerator.exists() && degreesRotated <= (Math.PI * 2) - StartEndPathGenerator.DEGREE_ROTATION) {
+            degreesRotated += StartEndPathGenerator.DEGREE_ROTATION;
             startEndPathGenerator = new StartEndPathGenerator(noise, startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos))), node -> {
                 BlockPos nodePos = node.getPos();
                 int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());

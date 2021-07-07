@@ -29,6 +29,8 @@ public class StartEndPathGenerator {
     private final BlockPos endPos;
     private final int distanceBetweenNodes;
 
+    public static final double DEGREE_ROTATION = Math.PI / 3;
+
 
     public StartEndPathGenerator(List<Node> nodes, Long2ObjectArrayMap<List<Node>> fastNodes, FastNoise noise, BlockPos startPos, BlockPos endPos, int distanceBetweenNodes) {
         this.nodes = nodes;
@@ -61,14 +63,13 @@ public class StartEndPathGenerator {
             BlockPos.Mutable pos = new BlockPos.Mutable(prevPos.getX() + angleOffset.getX(), prevPos.getY() + angleOffset.getY(), prevPos.getZ() + angleOffset.getZ());
             Node nextNode = new Node(pos, i);
 
-            // 0.5F is the equivalent of 30 degrees in this case
-            double degreesRotated = Math.PI / 12;
+            double degreesRotated = DEGREE_ROTATION;
             while (isInvalid.test(nextNode)) {
                 Vector3i rotatedAngleOffset = getAngleOffset((float) (noiseAngle + degreesRotated));
-                degreesRotated += Math.PI / 12;
+                degreesRotated += DEGREE_ROTATION;
                 nextNode.getPos().set(prevPos.getX() + rotatedAngleOffset.getX(), 0, prevPos.getZ() + rotatedAngleOffset.getZ());
-
-                if (degreesRotated >= Math.PI) {
+                nextNode.setAngleOffset((float) degreesRotated);
+                if (degreesRotated >= Math.PI * 2) {
                     this.nodes = null;
                     this.fastNodes = null;
                     return; // This should never ever hit.
@@ -110,6 +111,7 @@ public class StartEndPathGenerator {
                 nodeTag.putIntArray("pos", writeBlockPos(node.getPos()));
                 nodeTag.putInt("idx", node.getIdx());
                 nodeTag.putInt("generated", node.getGeneratedForNode());
+                nodeTag.putFloat("angleOffset", node.getAngleOffset());
                 nodes.add(nodeTag);
             }
             tag.put("nodes", nodes);
@@ -148,8 +150,9 @@ public class StartEndPathGenerator {
 
                 int index = readNode.getInt("idx");
                 int generated = readNode.getInt("generated");
+                float angleOffset = readNode.getFloat("angleOffset");
 
-                Node nbtNode = new Node(pos, index, generated);
+                Node nbtNode = new Node(pos, index, generated, angleOffset);
                 nodes.add(nbtNode);
                 allNodes.add(nbtNode);
             }
@@ -172,7 +175,7 @@ public class StartEndPathGenerator {
     // Angle 1.5 = East(Positive X)
     // Angle 3 = North(Negative Z)
 
-    private Vector3i getAngleOffset(float angle) {
+    Vector3i getAngleOffset(float angle) {
         return getAngleOffset(angle, this.distanceBetweenNodes);
     }
 
@@ -232,10 +235,12 @@ public class StartEndPathGenerator {
         private final BlockPos.Mutable pos;
         private int heightAtLocation = 0;
         private int generatedForNode;
+        private float angleOffset;
 
-        private Node(BlockPos.Mutable pos, int idx, int generatedForNode) {
+        private Node(BlockPos.Mutable pos, int idx, int generatedForNode, float angleOffset) {
             this(pos, idx);
             this.generatedForNode = generatedForNode;
+            this.angleOffset = angleOffset;
         }
 
         private Node(BlockPos.Mutable pos, int idx) {
@@ -269,6 +274,14 @@ public class StartEndPathGenerator {
 
         public void setGeneratedForNode(int generatedForNode) {
             this.generatedForNode = generatedForNode;
+        }
+
+        public float getAngleOffset() {
+            return angleOffset;
+        }
+
+        public void setAngleOffset(float angleOffset) {
+            this.angleOffset = angleOffset;
         }
     }
 }
