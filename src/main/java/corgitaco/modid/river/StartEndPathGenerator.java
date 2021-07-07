@@ -31,6 +31,8 @@ public class StartEndPathGenerator {
 
     public static final double DEGREE_ROTATION = Math.PI / 3;
 
+    public static final boolean RETURN_BROKEN_GENERATORS = false;
+
 
     public StartEndPathGenerator(List<Node> nodes, Long2ObjectArrayMap<List<Node>> fastNodes, FastNoise noise, BlockPos startPos, BlockPos endPos, int distanceBetweenNodes) {
         this.nodes = nodes;
@@ -62,22 +64,36 @@ public class StartEndPathGenerator {
             Vector3i angleOffset = getAngleOffset(noiseAngle);
             BlockPos.Mutable pos = new BlockPos.Mutable(prevPos.getX() + angleOffset.getX(), prevPos.getY() + angleOffset.getY(), prevPos.getZ() + angleOffset.getZ());
             Node nextNode = new Node(pos, i);
+            long key = ChunkPos.asLong(SectionPos.blockToSectionCoord(nextNode.getPos().getX()), SectionPos.blockToSectionCoord(nextNode.getPos().getZ()));
 
+            List<BlockPos> failedPositions = new ArrayList<>();
             double degreesRotated = DEGREE_ROTATION;
             while (isInvalid.test(nextNode)) {
                 Vector3i rotatedAngleOffset = getAngleOffset((float) (noiseAngle + degreesRotated));
                 degreesRotated += DEGREE_ROTATION;
+                BlockPos failedPos = new BlockPos(nextNode.getPos());
                 nextNode.getPos().set(prevPos.getX() + rotatedAngleOffset.getX(), 0, prevPos.getZ() + rotatedAngleOffset.getZ());
                 nextNode.setAngleOffset((float) degreesRotated);
+
+                failedPositions.add(failedPos);
+
                 if (degreesRotated >= Math.PI * 2) {
-                    this.nodes = null;
-                    this.fastNodes = null;
-                    return; // This should never ever hit.
+                    if (RETURN_BROKEN_GENERATORS) {
+                        nextNode.getFailedPositions().addAll(failedPositions);
+                        nodes.add(nextNode);
+                        fastNodes.computeIfAbsent(key, key2 -> new ArrayList<>()).add(nextNode);
+                        this.nodes = nodes;
+                        this.fastNodes = fastNodes;
+                        return; // This should never ever hit.
+                    } else {
+                        this.nodes = null;
+                        this.fastNodes = null;
+                        return;
+                    }
                 }
             }
 
 
-            long key = ChunkPos.asLong(SectionPos.blockToSectionCoord(nextNode.getPos().getX()), SectionPos.blockToSectionCoord(nextNode.getPos().getZ()));
 
             if (isValid.test(nextNode)) {
                 nodes.add(nextNode);
@@ -236,6 +252,7 @@ public class StartEndPathGenerator {
         private int heightAtLocation = 0;
         private int generatedForNode;
         private float angleOffset;
+        private final List<BlockPos> failedPositions = new ArrayList<>();
 
         private Node(BlockPos.Mutable pos, int idx, int generatedForNode, float angleOffset) {
             this(pos, idx);
@@ -282,6 +299,10 @@ public class StartEndPathGenerator {
 
         public void setAngleOffset(float angleOffset) {
             this.angleOffset = angleOffset;
+        }
+
+        public List<BlockPos> getFailedPositions() {
+            return failedPositions;
         }
     }
 }

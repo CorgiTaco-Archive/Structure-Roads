@@ -51,7 +51,7 @@ import java.util.Random;
 
 public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
-    public static final boolean DEBUG_ANGLES = true;
+    public static final boolean DEBUG_ANGLES = false;
 
     public static final Feature<NoFeatureConfig> PATH = BiomeUtils.createFeature("structure_aware_path", new WorldStructureAwarePathGenerator(NoFeatureConfig.CODEC));
 
@@ -250,7 +250,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
                     random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeperationSettings.salt());
 
-                    StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, createNoise(random.nextInt()), startStructurePos, endStructurePos, startPos, endPos, startEndPathGenerators);
+                    StartEndPathGenerator startEndPathGenerator = getPathGenerator(worldRegion, random, startStructurePos, endStructurePos, startPos, endPos, startEndPathGenerators);
                     if (startEndPathGenerator != null) {
                         startEndPathGenerators.add(startEndPathGenerator);
                         Main.LOGGER.info(String.format("/tp %s ~ %s", startPos.getX(), startPos.getZ()));
@@ -339,7 +339,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
         BlockPos.Mutable mutable1 = new BlockPos.Mutable();
         if (DEBUG_ANGLES) {
-            debugAngles(worldRegion, pathGenerator, node, nodeX, nodeZ, mutable1);
+            debugFailedAngles(worldRegion, node, mutable1);
         }
 
         for (int i = node.getGeneratedForNode(); i <= pathGenerator.getDistanceBetweenNodes(); i++) {
@@ -365,7 +365,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
-    private void debugAngles(ISeedReader worldRegion, StartEndPathGenerator pathGenerator, StartEndPathGenerator.Node node, int nodeX, int nodeZ, BlockPos.Mutable mutable1) {
+    private void debugAllAngles(ISeedReader worldRegion, StartEndPathGenerator pathGenerator, StartEndPathGenerator.Node node, int nodeX, int nodeZ, BlockPos.Mutable mutable1) {
         if (node.getIdx() % 5 == 0) {
 
             mutable1.set(nodeX, worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, nodeX, nodeZ) - 1, nodeZ);
@@ -389,25 +389,36 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
+    private void debugFailedAngles(ISeedReader worldRegion, StartEndPathGenerator.Node node, BlockPos.Mutable mutable1) {
+        for (BlockPos failedPosition : node.getFailedPositions()) {
+            mutable1.set(failedPosition.getX(), worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, failedPosition.getX(), failedPosition.getZ()) - 1, failedPosition.getZ());
+            for (int height = 0; height < 7; height++) {
+                worldRegion.setBlock(mutable1.move(Direction.UP), Blocks.EMERALD_BLOCK.defaultBlockState(), 2);
+            }
+        }
+    }
+
     /**
      * Add a path generator to this region's cache and cache how many times a given position has succeeded.
      */
     @Nullable
-    private StartEndPathGenerator getPathGenerator(ISeedReader worldRegion, FastNoise noise, long startStructurePos, long endStructurePos, BlockPos startPos, BlockPos endPos, List<StartEndPathGenerator> generators) {
+    private StartEndPathGenerator getPathGenerator(ISeedReader worldRegion, Random random, long startStructurePos, long endStructurePos, BlockPos startPos, BlockPos endPos, List<StartEndPathGenerator> generators) {
         float degreesRotated = 0.0F;
 
-        StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos))), node -> {
+        FastNoise noise = createNoise(random.nextInt());
+        StartEndPathGenerator startEndPathGenerator = new StartEndPathGenerator(noise, startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos, random), startStructurePos)), node -> {
             BlockPos nodePos = node.getPos();
             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
             int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
+            long nodeChunk = ChunkPos.asLong(nodeChunkX, nodeChunkZ);
 
-            return nodeChunkX == SectionPos.blockToSectionCoord(endPos.getX()) && nodeChunkZ == SectionPos.blockToSectionCoord(endPos.getZ());
+            return nodeChunk == endStructurePos;
 
         }, 5000, degreesRotated, 5);
 
         while (!startEndPathGenerator.exists() && degreesRotated <= (Math.PI * 2) - StartEndPathGenerator.DEGREE_ROTATION) {
             degreesRotated += StartEndPathGenerator.DEGREE_ROTATION;
-            startEndPathGenerator = new StartEndPathGenerator(noise, startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos))), node -> {
+            startEndPathGenerator = new StartEndPathGenerator(createNoise(random.nextInt()), startPos, endPos, (node -> isNodeInvalid(node, worldRegion, pathBox(startStructurePos, endStructurePos, random), startStructurePos)), node -> {
                 BlockPos nodePos = node.getPos();
                 int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
                 int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
@@ -432,11 +443,10 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     /**
      * Returning true tells the Path generator to recompute the angle of the pos used to create this position w/ a different angle.
      */
-    private boolean isNodeInvalid(StartEndPathGenerator.Node node, ISeedReader world, MutableBoundingBox pathBox) {
+    private boolean isNodeInvalid(StartEndPathGenerator.Node node, ISeedReader world, MutableBoundingBox pathBox, long startPos) {
         BlockPos nodePos = node.getPos();
         int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
         int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
-
 
         Biome noiseBiome = world.getBiome(nodePos);
         Biome.Category biomeCategory = noiseBiome.getBiomeCategory();
@@ -467,24 +477,27 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         return noise;
     }
 
-    private MutableBoundingBox pathBox(long startPos, long endPos) {
+    private MutableBoundingBox pathBox(long startPos, long endPos, Random random) {
         int startPosChunkX = ChunkPos.getX(startPos);
         int startPosChunkZ = ChunkPos.getZ(startPos);
 
         int endPosChunkX = ChunkPos.getX(endPos);
         int endPosChunkZ = ChunkPos.getZ(endPos);
 
-        int xDiff = Math.abs(startPosChunkX - endPosChunkX);
-        int zDiff = Math.abs(startPosChunkZ - endPosChunkZ);
+        boolean flipX = startPosChunkX > endPosChunkX;
+        boolean flipZ = startPosChunkZ > endPosChunkZ;
+        MutableBoundingBox structureBox = new MutableBoundingBox(flipX ? endPosChunkX : startPosChunkX, 0, flipZ ? endPosChunkZ : startPosChunkZ, flipX ? startPosChunkX : endPosChunkZ, 0, flipZ ? startPosChunkZ : endPosChunkZ);
 
+        MutableBoundingBox pathBox;
 
-        if (xDiff > zDiff) {
-            return new MutableBoundingBox(startPosChunkX, 0, startPosChunkZ - 4, endPosChunkX, 0, endPosChunkZ + 3);
-        } else if (zDiff > xDiff) {
-            return new MutableBoundingBox(startPosChunkX - 4, 0, startPosChunkZ, endPosChunkX + 3, 0, endPosChunkZ);
+        if (structureBox.getXSpan() > structureBox.getZSpan()) {
+            pathBox = new MutableBoundingBox(structureBox.x0 - random.nextInt(5) - 2, 0, structureBox.z0, structureBox.x1 + random.nextInt(5) + 2, 0, structureBox.z1);
+        } else if (structureBox.getZSpan() > structureBox.getXSpan()) {
+            pathBox = new MutableBoundingBox(structureBox.x0, 0, structureBox.z0 - random.nextInt(5) - 2, structureBox.x1, 0, structureBox.z1 + random.nextInt(5) + 2);
         } else {
-            return new MutableBoundingBox(startPosChunkX, 0, startPosChunkZ, endPosChunkX, 0, endPosChunkZ);
+            pathBox = structureBox;
         }
+        return pathBox;
     }
 
     public boolean sampleAndTestChunkBiomesForStructure(int chunkX, int chunkZ, BiomeManager.IBiomeReader biomeReader, Structure<?> structure) {
