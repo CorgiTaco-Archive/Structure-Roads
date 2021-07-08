@@ -152,7 +152,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
 
         if (regionPositions.containsKey(currentRegion) && !regionPathGenerators.containsKey(currentRegion)) {
-            addToGeneratorsToCache(worldRegion, seed, currentRegionX, currentRegionZ, currentRegion, generatorStorageDir, structureSeperationSettings, regionPositions, regionPathGenerators);
+            addRegionGeneratorsToCache(worldRegion, seed, currentRegionX, currentRegionZ, currentRegion, generatorStorageDir, structureSeperationSettings, regionPositions, regionPathGenerators);
         }
 
 
@@ -181,7 +181,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         if (!file.exists()) {
             scanRegion(seed, biomeSource, village, structureSeperationSettings, spacing, regionPositions, regionX, regionZ);
 
-            saveNewStructureRegion(regionPositions, village, activeRegion, file);
+            saveStructureRegionToDisk(regionPositions, village, activeRegion, file);
         } else {
             readStructuresForRegion(regionPositions, village, activeRegion, file);
         }
@@ -215,7 +215,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
-    private void saveNewStructureRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
+    private void saveStructureRegionToDisk(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
         String structureName = structure.getFeatureName() + "_positions";
         CompoundNBT nbt = new CompoundNBT();
         nbt.putLongArray(structureName, regionPositions.get(activeRegion).toLongArray());
@@ -253,20 +253,20 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
     // Path Generators
 
     /************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-    private void addToGeneratorsToCache(ISeedReader worldRegion, long seed, int currentRegionX, int currentRegionZ, long currentRegion, Path generatorStorageDir, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators) {
+    private void addRegionGeneratorsToCache(ISeedReader worldRegion, long seed, int currentRegionX, int currentRegionZ, long currentRegion, Path generatorStorageDir, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators) {
         String fileName = currentRegionX + "," + currentRegionZ + ".2dr";
         File file = generatorStorageDir.resolve(fileName).toFile();
 
         if (!file.exists()) {
             List<StartEndPathGenerator> startEndPathGenerators = processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeperationSettings, regionPositions, regionPathGenerators);
 
-            saveGeneratorsToDisk(file, startEndPathGenerators);
+            saveRegionGeneratorsToDisk(file, startEndPathGenerators);
         } else {
-            readGeneratorsFromDisk(currentRegion, regionPathGenerators, file);
+            readRegionGeneratorsFromDisk(currentRegion, regionPathGenerators, file);
         }
     }
 
-    private void readGeneratorsFromDisk(long currentRegion, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, File file) {
+    private void readRegionGeneratorsFromDisk(long currentRegion, Long2ReferenceOpenHashMap<ArrayList<StartEndPathGenerator>> regionPathGenerators, File file) {
         ArrayList<StartEndPathGenerator> startEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
         try {
             CompoundNBT readTag = CompressedStreamTools.read(file);
@@ -281,7 +281,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         }
     }
 
-    private void saveGeneratorsToDisk(File file, List<StartEndPathGenerator> startEndPathGenerators) {
+    private void saveRegionGeneratorsToDisk(File file, List<StartEndPathGenerator> startEndPathGenerators) {
         CompoundNBT nbt = new CompoundNBT();
         ListNBT generators = new ListNBT();
         for (StartEndPathGenerator startEndPathGenerator : startEndPathGenerators) {
@@ -334,7 +334,6 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
         int endX = ChunkPos.getX(endStructurePos);
         int endZ = ChunkPos.getZ(endStructurePos);
         BlockPos endPos = new BlockPos(SectionPos.sectionToBlockCoord(endX), 0, SectionPos.sectionToBlockCoord(endZ));
-
 
         SharedSeedRandom random = new SharedSeedRandom();
 
