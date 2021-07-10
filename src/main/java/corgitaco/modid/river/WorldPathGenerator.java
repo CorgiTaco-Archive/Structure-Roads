@@ -156,8 +156,7 @@ public class WorldPathGenerator extends Feature<NoFeatureConfig> {
         if (seed != serverSeed || noise == null) {
             seed = serverSeed;
             noise = new FastNoise((int) seed);
-            noise.SetNoiseType(FastNoise.NoiseType.PerlinFractal);
-            noise.SetGradientPerturbAmp(1);
+            noise.SetNoiseType(FastNoise.NoiseType.Perlin);
             noise.SetFractalOctaves(5);
             noise.SetFractalGain(0.5f);
             noise.SetFrequency(0.08F / 5);

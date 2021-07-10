@@ -48,20 +48,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureConfig> {
+public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureConfig> {
 
     public static final boolean DEBUG_ANGLES = false;
 
-    public static final Feature<NoFeatureConfig> PATH = BiomeUtils.createFeature("structure_aware_perlin_path", new WorldStructureAwarePerlinPathGenerator(NoFeatureConfig.CODEC));
+    public static final Feature<NoFeatureConfig> PATH = BiomeUtils.createFeature("structure_aware_perlin_path", new WorldStructureAwareWarpedPathGenerator(NoFeatureConfig.CODEC));
 
     public static final ConfiguredFeature<?, ?> CONFIGURED_PATH = BiomeUtils.createConfiguredFeature("structure_aware_perlin_path", PATH.configured(NoFeatureConfig.INSTANCE).decorated(Placement.NOPE.configured(NoPlacementConfig.INSTANCE)));
 
-    public WorldStructureAwarePerlinPathGenerator(Codec<NoFeatureConfig> codec) {
+    public WorldStructureAwareWarpedPathGenerator(Codec<NoFeatureConfig> codec) {
         super(codec);
     }
 
     private final Map<World, Long2ReferenceOpenHashMap<LongSet>> structurePositions = new Object2ObjectArrayMap<>();
-    private final Map<World, Long2ReferenceOpenHashMap<ArrayList<PerlinStartEndPathGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
+    private final Map<World, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
     private final Map<ServerWorld, Path> worldStructuresCache = new Object2ObjectArrayMap<>();
     private final Map<ServerWorld, Path> worldGeneratorsCache = new Object2ObjectArrayMap<>();
 
@@ -138,7 +138,7 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
         int spacing = structureSeperationSettings.spacing();
 
         Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
-        Long2ReferenceOpenHashMap<ArrayList<PerlinStartEndPathGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
+        Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
 
         for (int regionX = currentRegionX - searchRangeInRegions; regionX < currentRegionX + searchRangeInRegions; regionX++) {
             for (int regionZ = currentRegionZ - searchRangeInRegions; regionZ < currentRegionZ + searchRangeInRegions; regionZ++) {
@@ -156,12 +156,12 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
 
 
         if (regionPathGenerators.containsKey(currentRegion)) {
-            ArrayList<PerlinStartEndPathGenerator> perlinStartEndPathGenerators = regionPathGenerators.get(currentRegion);
+            ArrayList<WarpedStartEndGenerator> warpedStartEndGenerators = regionPathGenerators.get(currentRegion);
 
-            for (PerlinStartEndPathGenerator perlinStartEndPathGenerator : perlinStartEndPathGenerators) {
-                if (perlinStartEndPathGenerator.getNodeChunkPositions().contains(currentChunk)) {
-                    for (PerlinStartEndPathGenerator.Node node : perlinStartEndPathGenerator.getNodesForChunk(currentChunk)) {
-                        generateForNode(worldRegion, chunkX, chunkZ, node, perlinStartEndPathGenerator);
+            for (WarpedStartEndGenerator warpedStartEndGenerator : warpedStartEndGenerators) {
+                if (warpedStartEndGenerator.getNodeChunkPositions().contains(currentChunk)) {
+                    for (WarpedStartEndGenerator.Node node : warpedStartEndGenerator.getNodesForChunk(currentChunk)) {
+                        generateForNode(worldRegion, chunkX, chunkZ, node, warpedStartEndGenerator);
                     }
                 }
             }
@@ -252,27 +252,27 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
     // Path Generators
 
     /************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-    private void addRegionGeneratorsToCache(ISeedReader worldRegion, long seed, int currentRegionX, int currentRegionZ, long currentRegion, Path generatorStorageDir, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<PerlinStartEndPathGenerator>> regionPathGenerators) {
+    private void addRegionGeneratorsToCache(ISeedReader worldRegion, long seed, int currentRegionX, int currentRegionZ, long currentRegion, Path generatorStorageDir, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators) {
         String fileName = currentRegionX + "," + currentRegionZ + ".2dr";
         File file = generatorStorageDir.resolve(fileName).toFile();
 
         if (!file.exists()) {
-            List<PerlinStartEndPathGenerator> perlinStartEndPathGenerators = processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeperationSettings, regionPositions, regionPathGenerators);
+            List<WarpedStartEndGenerator> warpedStartEndGenerators = processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeperationSettings, regionPositions, regionPathGenerators);
 
-            saveRegionGeneratorsToDisk(file, perlinStartEndPathGenerators);
+            saveRegionGeneratorsToDisk(file, warpedStartEndGenerators);
         } else {
             readRegionGeneratorsFromDisk(currentRegion, regionPathGenerators, file);
         }
     }
 
-    private void readRegionGeneratorsFromDisk(long currentRegion, Long2ReferenceOpenHashMap<ArrayList<PerlinStartEndPathGenerator>> regionPathGenerators, File file) {
-        ArrayList<PerlinStartEndPathGenerator> perlinStartEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
+    private void readRegionGeneratorsFromDisk(long currentRegion, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators, File file) {
+        ArrayList<WarpedStartEndGenerator> warpedStartEndGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
         try {
             CompoundNBT readTag = CompressedStreamTools.read(file);
             ListNBT generators = readTag.getList("generators", 10);
 
             for (INBT inbt : generators) {
-                perlinStartEndPathGenerators.add(PerlinStartEndPathGenerator.read((CompoundNBT) inbt));
+                warpedStartEndGenerators.add(WarpedStartEndGenerator.read((CompoundNBT) inbt));
             }
 
         } catch (IOException e) {
@@ -280,11 +280,11 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
         }
     }
 
-    private void saveRegionGeneratorsToDisk(File file, List<PerlinStartEndPathGenerator> perlinStartEndPathGenerators) {
+    private void saveRegionGeneratorsToDisk(File file, List<WarpedStartEndGenerator> warpedStartEndGenerators) {
         CompoundNBT nbt = new CompoundNBT();
         ListNBT generators = new ListNBT();
-        for (PerlinStartEndPathGenerator perlinStartEndPathGenerator : perlinStartEndPathGenerators) {
-            generators.add(perlinStartEndPathGenerator.write());
+        for (WarpedStartEndGenerator warpedStartEndGenerator : warpedStartEndGenerators) {
+            generators.add(warpedStartEndGenerator.write());
         }
 
         nbt.put("generators", generators);
@@ -296,8 +296,8 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
         }
     }
 
-    private List<PerlinStartEndPathGenerator> processPathGeneratorsForRegion(ISeedReader worldRegion, long seed, long currentRegion, StructureSeparationSettings structureSeparationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<PerlinStartEndPathGenerator>> regionPathGenerators) {
-        ArrayList<PerlinStartEndPathGenerator> perlinStartEndPathGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
+    private List<WarpedStartEndGenerator> processPathGeneratorsForRegion(ISeedReader worldRegion, long seed, long currentRegion, StructureSeparationSettings structureSeparationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators) {
+        ArrayList<WarpedStartEndGenerator> warpedStartEndGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
         LongSet regionStructurePositions = regionPositions.get(currentRegion);
         LongSet createdPaths = new LongArraySet();
 
@@ -318,14 +318,14 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
                         continue;
                     }
 
-                    tryAddPathGeneratorForRegion(worldRegion, seed, structureSeparationSettings, perlinStartEndPathGenerators, createdPaths, startStructurePos, endStructurePos);
+                    tryAddPathGeneratorForRegion(worldRegion, seed, structureSeparationSettings, warpedStartEndGenerators, createdPaths, startStructurePos, endStructurePos);
                 }
             }
         }
-        return perlinStartEndPathGenerators;
+        return warpedStartEndGenerators;
     }
 
-    private void tryAddPathGeneratorForRegion(ISeedReader worldRegion, long seed, StructureSeparationSettings structureSeparationSettings, ArrayList<PerlinStartEndPathGenerator> perlinStartEndPathGenerators, LongSet createdPaths, long startStructurePos, long endStructurePos) {
+    private void tryAddPathGeneratorForRegion(ISeedReader worldRegion, long seed, StructureSeparationSettings structureSeparationSettings, ArrayList<WarpedStartEndGenerator> warpedStartEndGenerators, LongSet createdPaths, long startStructurePos, long endStructurePos) {
         int startX = ChunkPos.getX(startStructurePos);
         int startZ = ChunkPos.getZ(startStructurePos);
         BlockPos startPos = new BlockPos(SectionPos.sectionToBlockCoord(startX), 0, SectionPos.sectionToBlockCoord(startZ));
@@ -338,10 +338,10 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
 
         random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeparationSettings.salt());
 
-        PerlinStartEndPathGenerator perlinStartEndPathGenerator = getPathGenerator(worldRegion, random, endStructurePos, startPos, endPos, perlinStartEndPathGenerators);
-        if (perlinStartEndPathGenerator != null) {
+        WarpedStartEndGenerator warpedStartEndGenerator = getPathGenerator(worldRegion, random, endStructurePos, startPos, endPos, warpedStartEndGenerators);
+        if (warpedStartEndGenerator != null) {
             createdPaths.add(startStructurePos + endStructurePos);
-            perlinStartEndPathGenerators.add(perlinStartEndPathGenerator);
+            warpedStartEndGenerators.add(warpedStartEndGenerator);
             Main.LOGGER.info(String.format("/tp %s ~ %s - /tp %s ~ %s", startPos.getX(), startPos.getZ(), endPos.getX(), endPos.getZ()));
         }
     }
@@ -350,11 +350,11 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
      * Add a path generator to this region's cache and cache how many times a given position has succeeded.
      */
     @Nullable
-    private PerlinStartEndPathGenerator getPathGenerator(ISeedReader worldRegion, Random random, long endStructurePos, BlockPos startPos, BlockPos endPos, List<PerlinStartEndPathGenerator> generators) {
+    private WarpedStartEndGenerator getPathGenerator(ISeedReader worldRegion, Random random, long endStructurePos, BlockPos startPos, BlockPos endPos, List<WarpedStartEndGenerator> generators) {
         float degreesRotated = 0.0F;
 
         FastNoise noise = createNoise(random.nextInt());
-        PerlinStartEndPathGenerator perlinStartEndPathGenerator = new PerlinStartEndPathGenerator(noise, random, startPos, endPos, (node -> isNodeInvalid(node, worldRegion)), node -> {
+        WarpedStartEndGenerator warpedStartEndGenerator = new WarpedStartEndGenerator(noise, random, startPos, endPos, (node -> isNodeInvalid(node, worldRegion)), node -> {
             BlockPos nodePos = node.getPos();
             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
             int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
@@ -364,14 +364,14 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
 
         }, 5000, degreesRotated, 5);
 
-        return !perlinStartEndPathGenerator.exists() ? null : perlinStartEndPathGenerator;
+        return !warpedStartEndGenerator.exists() ? null : warpedStartEndGenerator;
     }
 
 
     /**
      * Returning true tells the Path generator to recompute the angle of the pos used to create this position w/ a different angle.
      */
-    private boolean isNodeInvalid(PerlinStartEndPathGenerator.Node node, ISeedReader world) {
+    private boolean isNodeInvalid(WarpedStartEndGenerator.Node node, ISeedReader world) {
         BlockPos nodePos = node.getPos();
         int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
         int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
@@ -393,18 +393,18 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
     /**
      * If the node from the Path generator intersects the current chunk, generate.
      */
-    private void generateForNode(ISeedReader worldRegion, int chunkX, int chunkZ, PerlinStartEndPathGenerator.Node node, PerlinStartEndPathGenerator pathGenerator) {
+    private void generateForNode(ISeedReader worldRegion, int chunkX, int chunkZ, WarpedStartEndGenerator.Node node, WarpedStartEndGenerator pathGenerator) {
         BlockPos.Mutable mutable = new BlockPos.Mutable().set(node.getPos());
         mutable.setY(worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, mutable.getX(), mutable.getZ()) - 1);
 
         int size = 2;
 
-        List<PerlinStartEndPathGenerator.Node> nodes = pathGenerator.getNodes();
+        List<WarpedStartEndGenerator.Node> nodes = pathGenerator.getNodes();
 
         int prevIdx = node.getIdx() - 1;
 
         @Nullable
-        PerlinStartEndPathGenerator.Node prevNode = 0 <= prevIdx ? nodes.get(prevIdx) : null;
+        WarpedStartEndGenerator.Node prevNode = 0 <= prevIdx ? nodes.get(prevIdx) : null;
 
         if (prevNode != null) {
             if (prevNode.getGeneratedForNode() <= pathGenerator.getDistanceBetweenNodes()) {
@@ -414,7 +414,7 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
         generateBlocksForNode(worldRegion, chunkX, chunkZ, pathGenerator, size, node);
     }
 
-    private void generateBlocksForNode(ISeedReader worldRegion, int chunkX, int chunkZ, PerlinStartEndPathGenerator pathGenerator, int size, PerlinStartEndPathGenerator.Node node) {
+    private void generateBlocksForNode(ISeedReader worldRegion, int chunkX, int chunkZ, WarpedStartEndGenerator pathGenerator, int size, WarpedStartEndGenerator.Node node) {
         int nodeX = node.getPos().getX();
         int nodeZ = node.getPos().getZ();
 
@@ -446,7 +446,7 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
         }
     }
 
-    private void debugAllAngles(ISeedReader worldRegion, PerlinStartEndPathGenerator pathGenerator, PerlinStartEndPathGenerator.Node node, int nodeX, int nodeZ, BlockPos.Mutable mutable1) {
+    private void debugAllAngles(ISeedReader worldRegion, WarpedStartEndGenerator pathGenerator, WarpedStartEndGenerator.Node node, int nodeX, int nodeZ, BlockPos.Mutable mutable1) {
         if (node.getIdx() % 5 == 0) {
 
             mutable1.set(nodeX, worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, nodeX, nodeZ) - 1, nodeZ);
@@ -454,7 +454,7 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
                 worldRegion.setBlock(mutable1.move(Direction.UP), Blocks.EMERALD_BLOCK.defaultBlockState(), 2);
             }
 
-            double degreesRotated = PerlinStartEndPathGenerator.DEGREE_ROTATION;
+            double degreesRotated = WarpedStartEndGenerator.DEGREE_ROTATION;
             while (degreesRotated <= Math.PI * 2) {
                 Vector3i angleOffset = pathGenerator.getAngleOffset((float) (pathGenerator.getNoise().GetNoise(nodeX, 0, nodeZ) + degreesRotated));
 
@@ -465,12 +465,12 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
                 for (int height = 0; height < 7; height++) {
                     worldRegion.setBlock(mutable1.move(Direction.UP), Blocks.DIAMOND_BLOCK.defaultBlockState(), 2);
                 }
-                degreesRotated += PerlinStartEndPathGenerator.DEGREE_ROTATION;
+                degreesRotated += WarpedStartEndGenerator.DEGREE_ROTATION;
             }
         }
     }
 
-    private void debugFailedAngles(ISeedReader worldRegion, PerlinStartEndPathGenerator.Node node, BlockPos.Mutable mutable1) {
+    private void debugFailedAngles(ISeedReader worldRegion, WarpedStartEndGenerator.Node node, BlockPos.Mutable mutable1) {
         for (BlockPos failedPosition : node.getFailedPositions()) {
             mutable1.set(failedPosition.getX(), worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, failedPosition.getX(), failedPosition.getZ()) - 1, failedPosition.getZ());
             for (int height = 0; height < 7; height++) {
@@ -484,11 +484,7 @@ public class WorldStructureAwarePerlinPathGenerator extends Feature<NoFeatureCon
 
     public static FastNoise createNoise(int seed) {
         FastNoise noise = new FastNoise(seed);
-        noise.SetNoiseType(FastNoise.NoiseType.PerlinFractal);
-        noise.SetGradientPerturbAmp(1);
-        noise.SetFractalOctaves(5);
-        noise.SetFractalGain(0.5f);
-        noise.SetFrequency(0.08F / 5);
+        noise.SetDomainWarpType(FastNoise.DomainWarpType.BasicGrid);
         return noise;
     }
 

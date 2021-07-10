@@ -1,6 +1,6 @@
 package corgitaco.modid.visualizer;
 
-import corgitaco.modid.river.perlin.PerlinStartEndPathGenerator;
+import corgitaco.modid.river.perlin.WarpedStartEndGenerator;
 import corgitaco.modid.util.fastnoise.FastNoise;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
@@ -36,7 +36,7 @@ public class Visualizer {
         long endStructurePos = ChunkPos.asLong(endX, endZ);
 
         FastNoise noise = createNoise(seed);
-        PerlinStartEndPathGenerator perlinStartEndPathGenerator = new PerlinStartEndPathGenerator(noise, random, startPos, endPos, (node -> false), (node) -> {
+        WarpedStartEndGenerator warpedStartEndGenerator = new WarpedStartEndGenerator(noise, random, startPos, endPos, (node -> false), (node) -> {
             BlockPos nodePos = node.getPos();
             int nodeChunkX = SectionPos.blockToSectionCoord(nodePos.getX());
             int nodeChunkZ = SectionPos.blockToSectionCoord(nodePos.getZ());
@@ -58,7 +58,7 @@ public class Visualizer {
             }
         }
         int rgb = new Color(24, 154, 25).getRGB();
-        for (PerlinStartEndPathGenerator.Node node : perlinStartEndPathGenerator.getNodes()) {
+        for (WarpedStartEndGenerator.Node node : warpedStartEndGenerator.getNodes()) {
             int x = node.getPos().getX();
             int z = node.getPos().getZ();
 
@@ -97,11 +97,8 @@ public class Visualizer {
 
     public static FastNoise createNoise(int seed) {
         FastNoise noise = new FastNoise(seed);
-        noise.SetNoiseType(FastNoise.NoiseType.PerlinFractal);
-        noise.SetGradientPerturbAmp(1);
-        noise.SetFractalOctaves(5);
-        noise.SetFractalGain(0.5f);
-        noise.SetFrequency(0.08F / 5);
+        noise.SetNoiseType(FastNoise.NoiseType.OpenSimplex2S);
+        noise.SetFrequency(0.0005F);
         return noise;
     }
 }

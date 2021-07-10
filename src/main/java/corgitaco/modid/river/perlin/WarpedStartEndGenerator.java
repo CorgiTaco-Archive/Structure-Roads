@@ -9,6 +9,7 @@ import net.minecraft.nbt.INBT;
 import net.minecraft.nbt.ListNBT;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.SectionPos;
 import net.minecraft.util.math.vector.Vector2f;
 import net.minecraft.util.math.vector.Vector3i;
@@ -21,7 +22,7 @@ import java.util.function.Predicate;
 /**
  * Used to dynamically create a randomly generated path from 1 object to another.
  */
-public class PerlinStartEndPathGenerator {
+public class WarpedStartEndGenerator {
     private final List<Node> nodes;
     private final Long2ObjectArrayMap<List<Node>> fastNodes;
     private final FastNoise noise;
@@ -34,7 +35,7 @@ public class PerlinStartEndPathGenerator {
     public static final boolean RETURN_BROKEN_GENERATORS = false;
 
 
-    public PerlinStartEndPathGenerator(List<Node> nodes, Long2ObjectArrayMap<List<Node>> fastNodes, FastNoise noise, BlockPos startPos, BlockPos endPos, int distanceBetweenNodes) {
+    public WarpedStartEndGenerator(List<Node> nodes, Long2ObjectArrayMap<List<Node>> fastNodes, FastNoise noise, BlockPos startPos, BlockPos endPos, int distanceBetweenNodes) {
         this.nodes = nodes;
         this.fastNodes = fastNodes;
         this.noise = noise;
@@ -43,7 +44,7 @@ public class PerlinStartEndPathGenerator {
         this.distanceBetweenNodes = distanceBetweenNodes;
     }
 
-    public PerlinStartEndPathGenerator(FastNoise noise, Random random, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, float generatorRotation, int distanceBetweenNodes) {
+    public WarpedStartEndGenerator(FastNoise noise, Random random, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, float generatorRotation, int distanceBetweenNodes) {
         this.noise = noise;
         this.startPos = startPos;
         this.endPos = endPos;
@@ -54,7 +55,7 @@ public class PerlinStartEndPathGenerator {
         nodes.add(new Node(startPos.mutable(), 0));
         int distanceInNodes = 100000;
 
-
+        noise.SetDomainWarpAmp(1000);
         for (int nodeIdx = 1; nodeIdx < distanceInNodes; nodeIdx++) {
             Node prevNode = nodes.get(nodeIdx - 1);
             BlockPos.Mutable prevPos = prevNode.getPos();
@@ -67,7 +68,24 @@ public class PerlinStartEndPathGenerator {
 
             BlockPos.Mutable pos = new BlockPos.Mutable(prevPos.getX() + xOffset, prevPos.getY(), prevPos.getZ() + zOffset);
 
+            double dotProduct = (pos.getX() - startPos.getX()) * (endPos.getX() - startPos.getX()) + (pos.getZ() - startPos.getZ()) * (endPos.getZ() - startPos.getZ());
+            double distSq = (endPos.getX() - startPos.getX()) * (endPos.getX() - startPos.getX()) + (endPos.getZ() - startPos.getZ()) * (endPos.getZ() - startPos.getZ());
+            double slide = (double) nodeIdx / distanceInNodes;
 
+            double clampedSlide = MathHelper.clampedLerp(0, 1, slide);
+            double maxWarp = 1 - 4 * (clampedSlide - 0.5) * (clampedSlide - 0.5);
+
+            FastNoise.Vector2 vector = new FastNoise.Vector2(pos.getX(), pos.getZ());
+            noise.DomainWarp(vector);
+            noise.SetDomainWarpAmp(5);
+            double relativeX = vector.x - pos.getX();
+            double relativeZ = vector.y - pos.getZ();
+
+            double newWarpedX = pos.getX() + maxWarp * relativeX;
+            double newWarpedZ = pos.getZ() + maxWarp * relativeZ;
+
+            pos.setX((int) newWarpedX);
+            pos.setZ((int) newWarpedZ);
             Node nextNode = new Node(pos, nodeIdx);
             long key = ChunkPos.asLong(SectionPos.blockToSectionCoord(nextNode.getPos().getX()), SectionPos.blockToSectionCoord(nextNode.getPos().getZ()));
 
@@ -115,7 +133,7 @@ public class PerlinStartEndPathGenerator {
         return nbt;
     }
 
-    public static PerlinStartEndPathGenerator read(CompoundNBT readTag) {
+    public static WarpedStartEndGenerator read(CompoundNBT readTag) {
         Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
         ArrayList<Node> allNodes = new ArrayList<>();
 
@@ -151,7 +169,7 @@ public class PerlinStartEndPathGenerator {
             fastNodes.put(chunkPos, nodes);
         }
 
-        return new PerlinStartEndPathGenerator(allNodes, fastNodes, WorldStructureAwarePerlinPathGenerator.createNoise(seed), startPos, endPos, distanceBetweenNodes);
+        return new WarpedStartEndGenerator(allNodes, fastNodes, WorldStructureAwareWarpedPathGenerator.createNoise(seed), startPos, endPos, distanceBetweenNodes);
     }
 
     public int[] writeBlockPos(BlockPos pos) {

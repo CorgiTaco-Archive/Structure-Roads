@@ -509,8 +509,7 @@ public class WorldStructureAwarePathGenerator extends Feature<NoFeatureConfig> {
 
     public static FastNoise createNoise(int seed) {
         FastNoise noise = new FastNoise(seed);
-        noise.SetNoiseType(FastNoise.NoiseType.PerlinFractal);
-        noise.SetGradientPerturbAmp(1);
+        noise.SetNoiseType(FastNoise.NoiseType.Perlin);
         noise.SetFractalOctaves(5);
         noise.SetFractalGain(0.5f);
         noise.SetFrequency(0.08F / 5);
