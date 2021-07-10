@@ -77,7 +77,6 @@ public class WarpedStartEndGenerator {
 
             FastNoise.Vector2 vector = new FastNoise.Vector2(pos.getX(), pos.getZ());
             noise.DomainWarp(vector);
-            noise.SetDomainWarpAmp(5);
             double relativeX = vector.x - pos.getX();
             double relativeZ = vector.y - pos.getZ();
 
