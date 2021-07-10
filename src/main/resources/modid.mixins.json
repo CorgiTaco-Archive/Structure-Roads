@@ -6,6 +6,7 @@
   "refmap": "modid.refmap.json",
   "mixins": [
     "MixinBiomeGenerationSettings",
+    "MixinDebugRenderer",
     "MixinMinecraftServer",
     "access.BiomeGenerationSettingsAccess",
     "access.ChunkManagerAccess",
