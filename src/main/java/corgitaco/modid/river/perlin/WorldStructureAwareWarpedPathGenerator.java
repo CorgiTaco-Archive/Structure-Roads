@@ -371,20 +371,34 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
 
             for (int idx = 0; idx < structurePositions.length; idx++) {
                 long startStructurePos = structurePositions[idx];
+                int startStructureX = ChunkPos.getX(startStructurePos);
+                int startStructureZ = ChunkPos.getZ(startStructurePos);
+                int closestDiff = Integer.MAX_VALUE;
+
+                long closestStructure = Long.MAX_VALUE;
                 for (int idx1 = 0; idx1 < structurePositions.length; idx1++) {
                     if (idx == idx1) {
                         continue;
                     }
+                    long testingEndStructurePos = structurePositions[idx1];
 
-                    long endStructurePos = structurePositions[idx1];
-
-                    // If we've already created a path between these points, let's NOT do it again.
-                    if (createdPaths.contains(startStructurePos + endStructurePos)) {
+                    if (createdPaths.contains(startStructurePos + testingEndStructurePos)) {
                         continue;
                     }
 
-                    tryAddPathGeneratorForRegion(worldRegion, seed, structureSeparationSettings, warpedStartEndGenerators, createdPaths, startStructurePos, endStructurePos);
+
+                    int testingStructureX = ChunkPos.getX(testingEndStructurePos);
+                    int testingStructureZ = ChunkPos.getZ(testingEndStructurePos);
+
+                    int currentDiff = Math.abs(startStructureX - testingStructureX) + Math.abs(startStructureZ - testingStructureZ);
+
+                    if (currentDiff < closestDiff) {
+                        closestStructure = testingEndStructurePos;
+                        closestDiff = currentDiff;
+                    }
+
                 }
+                tryAddPathGeneratorForRegion(worldRegion, seed, structureSeparationSettings, warpedStartEndGenerators, createdPaths, startStructurePos, closestStructure);
             }
         }
         return warpedStartEndGenerators;
@@ -401,7 +415,7 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
 
         SharedSeedRandom random = new SharedSeedRandom();
 
-        random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 1, endX + 1), Math.floorDiv(startZ + 1, endZ + 1), structureSeparationSettings.salt());
+        random.setLargeFeatureWithSalt(seed, Math.floorDiv(startX + 5, endX + 5), Math.floorDiv(startZ + 5, endZ + 5), structureSeparationSettings.salt());
 
         WarpedStartEndGenerator warpedStartEndGenerator = getPathGenerator(worldRegion, random, endStructurePos, startPos, endPos, warpedStartEndGenerators);
         if (warpedStartEndGenerator != null) {
