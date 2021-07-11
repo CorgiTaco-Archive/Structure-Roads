@@ -2,14 +2,15 @@ package corgitaco.modid.river.perlin;
 
 import com.mojang.serialization.Codec;
 import corgitaco.modid.Main;
-import corgitaco.modid.mixin.access.ChunkManagerAccess;
 import corgitaco.modid.mixin.access.StructureAccess;
+import corgitaco.modid.structure.PathGeneratorsWorldContext;
+import corgitaco.modid.structure.StructureNameContext;
 import corgitaco.modid.util.BiomeUtils;
 import corgitaco.modid.util.fastnoise.FastNoise;
+import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArraySet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import net.minecraft.block.Blocks;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.nbt.CompressedStreamTools;
@@ -22,16 +23,17 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.SectionPos;
 import net.minecraft.util.math.vector.Vector3i;
 import net.minecraft.world.ISeedReader;
-import net.minecraft.world.World;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.BiomeManager;
 import net.minecraft.world.biome.provider.BiomeProvider;
+import net.minecraft.world.chunk.IChunk;
 import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.Heightmap;
 import net.minecraft.world.gen.feature.ConfiguredFeature;
 import net.minecraft.world.gen.feature.Feature;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
 import net.minecraft.world.gen.feature.structure.Structure;
+import net.minecraft.world.gen.feature.structure.StructureStart;
 import net.minecraft.world.gen.feature.structure.VillageConfig;
 import net.minecraft.world.gen.placement.NoPlacementConfig;
 import net.minecraft.world.gen.placement.Placement;
@@ -41,16 +43,77 @@ import net.minecraft.world.server.ServerWorld;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureConfig> {
 
     public static final boolean DEBUG_ANGLES = false;
+
+    public static final String[] NAMES = new String[]{
+            "Perthlochry",
+            "Bournemouth",
+            "Wimborne",
+            "Bredon",
+            "Ballachulish",
+            "Sudbury",
+            "Emall",
+            "Bellmare",
+            "Garrigill",
+            "Polperro",
+            "Lakeshore",
+            "Wolfden",
+            "Aberuthven",
+            "Warrington",
+            "Northwich",
+            "Ascot",
+            "Coalfell",
+            "Calchester",
+            "Stanmore",
+            "Clacton",
+            "Wanborne",
+            "Alnwick",
+            "Rochdale",
+            "Gormsey",
+            "Favorsham",
+            "Clare View Point",
+            "Aysgarth",
+            "Wimborne",
+            "Tarrin",
+            "Arkmunster",
+            "Mirefield",
+            "Banrockburn",
+            "Acrine",
+            "Oldham",
+            "Glenarm",
+            "Pathstow",
+            "Ballachulish",
+            "Dumbarton",
+            "Carleone",
+            "Llanybydder",
+            "Norwich",
+            "Banrockburn",
+            "Auchendale",
+            "Arkaley",
+            "Aeberuthey",
+            "Peltragow",
+            "Clarcton",
+            "Garigill",
+            "Nantwich",
+            "Zalfari",
+            "Portsmouth",
+            "Transmere",
+            "Blencathra",
+            "Bradford",
+            "Thorpeness",
+            "Swordbreak",
+            "Thorpeness",
+            "Aeston",
+            "Azmarin",
+            "Haran"
+    };
 
     public static final Feature<NoFeatureConfig> PATH = BiomeUtils.createFeature("structure_aware_perlin_path", new WorldStructureAwareWarpedPathGenerator(NoFeatureConfig.CODEC));
 
@@ -59,11 +122,6 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
     public WorldStructureAwareWarpedPathGenerator(Codec<NoFeatureConfig> codec) {
         super(codec);
     }
-
-    private final Map<World, Long2ReferenceOpenHashMap<LongSet>> structurePositions = new Object2ObjectArrayMap<>();
-    private final Map<World, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>>> regionPathGenerators = new Object2ObjectArrayMap<>();
-    private final Map<ServerWorld, Path> worldStructuresCache = new Object2ObjectArrayMap<>();
-    private final Map<ServerWorld, Path> worldGeneratorsCache = new Object2ObjectArrayMap<>();
 
     public static long regionLong(int regionX, int regionZ) {
         return (long) regionX & 4294967295L | ((long) regionZ & 4294967295L) << 32;
@@ -106,29 +164,10 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
         int currentRegionZ = chunkToRegion(chunkZ);
         long currentRegion = regionLong(chunkToRegion(chunkX), chunkToRegion(chunkZ));
 
-        Path structureStorageDir = this.worldStructuresCache.computeIfAbsent(serverLevel, (level) -> {
-            Path storageFolder = ((ChunkManagerAccess) level.getChunkSource().chunkMap).getStorageFolder().toPath().resolve(Main.MOD_ID).resolve("structures");
-            if (!storageFolder.toFile().exists()) {
-                try {
-                    Files.createDirectories(storageFolder);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            return storageFolder;
-        });
+        PathGeneratorsWorldContext pathGeneratorsWorldContext = (PathGeneratorsWorldContext) serverLevel;
+        Path structureStorageDir = pathGeneratorsWorldContext.getWorldStructuresStorage();
 
-        Path generatorStorageDir = this.worldGeneratorsCache.computeIfAbsent(serverLevel, (level) -> {
-            Path storageFolder = ((ChunkManagerAccess) level.getChunkSource().chunkMap).getStorageFolder().toPath().resolve(Main.MOD_ID).resolve("generators");
-            if (!storageFolder.toFile().exists()) {
-                try {
-                    Files.createDirectories(storageFolder);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            return storageFolder;
-        });
+        Path generatorStorageDir = pathGeneratorsWorldContext.getWorldGeneratorStorage();
 
         BiomeProvider biomeSource = generator.getBiomeSource();
 
@@ -137,8 +176,8 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
         StructureSeparationSettings structureSeperationSettings = generator.getSettings().structureConfig().get(village);
         int spacing = structureSeperationSettings.spacing();
 
-        Long2ReferenceOpenHashMap<LongSet> regionPositions = this.structurePositions.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
-        Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators = this.regionPathGenerators.computeIfAbsent(serverLevel, (level1) -> new Long2ReferenceOpenHashMap<>());
+        Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions = pathGeneratorsWorldContext.getRegionStructurePositionsToName();
+        Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators = pathGeneratorsWorldContext.getRegionPathGenerators();
 
         for (int regionX = currentRegionX - searchRangeInRegions; regionX < currentRegionX + searchRangeInRegions; regionX++) {
             for (int regionZ = currentRegionZ - searchRangeInRegions; regionZ < currentRegionZ + searchRangeInRegions; regionZ++) {
@@ -152,6 +191,15 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
 
         if (regionPositions.containsKey(currentRegion) && !regionPathGenerators.containsKey(currentRegion)) {
             addRegionGeneratorsToCache(worldRegion, seed, currentRegionX, currentRegionZ, currentRegion, generatorStorageDir, structureSeperationSettings, regionPositions, regionPathGenerators);
+        }
+
+        IChunk chunk = worldRegion.getChunk(pos);
+        StructureStart<?> structureStart = chunk.getAllStarts().get(Structure.VILLAGE);
+        if (structureStart != null) {
+            Long2ObjectArrayMap<String> structureToStructureName = regionPositions.get(currentRegion);
+            if (structureToStructureName.containsKey(currentChunk)) {
+                ((StructureNameContext) structureStart).setStructureName(structureToStructureName.get(currentChunk));
+            }
         }
 
 
@@ -174,11 +222,11 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
     // Structure position Caching
 
     /************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-    private void addRegionStructuresToCache(long seed, Path structureStorageDir, BiomeProvider biomeSource, Structure<?> village, StructureSeparationSettings structureSeperationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> regionPositions, int regionX, int regionZ, long activeRegion) {
+    public static void addRegionStructuresToCache(long seed, Path structureStorageDir, BiomeProvider biomeSource, Structure<?> village, StructureSeparationSettings structureSeparationSettings, int spacing, Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions, int regionX, int regionZ, long activeRegion) {
         String fileName = regionX + "," + regionZ + ".2dr";
         File file = structureStorageDir.resolve(fileName).toFile();
         if (!file.exists()) {
-            scanRegion(seed, biomeSource, village, structureSeperationSettings, spacing, regionPositions, regionX, regionZ);
+            scanRegion(seed, biomeSource, village, structureSeparationSettings, spacing, regionPositions, regionX, regionZ);
 
             saveStructureRegionToDisk(regionPositions, village, activeRegion, file);
         } else {
@@ -186,7 +234,7 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
         }
     }
 
-    private void scanRegion(long seed, BiomeProvider biomeSource, Structure<?> village, StructureSeparationSettings structureSeperationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> regionPositions, int regionX, int regionZ) {
+    private static void scanRegion(long seed, BiomeProvider biomeSource, Structure<?> village, StructureSeparationSettings structureSeparationSettings, int spacing, Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions, int regionX, int regionZ) {
         int activeMinChunkX = regionToChunk(regionX);
         int activeMinChunkZ = regionToChunk(regionZ);
 
@@ -198,26 +246,41 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
         int activeMaxGridX = Math.floorDiv(activeMaxChunkX, spacing);
         int activeMaxGridZ = Math.floorDiv(activeMaxChunkZ, spacing);
 
-        scanRegionStructureGrid(seed, biomeSource, village, structureSeperationSettings, spacing, regionPositions, activeMinGridX, activeMinGridZ, activeMaxGridX, activeMaxGridZ);
+        scanRegionStructureGrid(seed, biomeSource, village, structureSeparationSettings, spacing, regionPositions, activeMinGridX, activeMinGridZ, activeMaxGridX, activeMaxGridZ);
     }
 
-    private void readStructuresForRegion(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
-        String structureName = structure.getFeatureName() + "_positions";
+    private static void readStructuresForRegion(Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions, Structure<?> structure, long activeRegion, File file) {
         try {
             CompoundNBT readTag = CompressedStreamTools.read(file);
-            if (readTag.contains(structureName)) {
-                long[] structurePositions = readTag.getLongArray(structureName);
-                regionPositions.put(activeRegion, new LongArraySet(structurePositions));
+            ListNBT structures = readTag.getList("structures", 10);
+            Long2ObjectArrayMap<String> structureDataForRegion = regionPositions.computeIfAbsent(activeRegion, (region) -> new Long2ObjectArrayMap<>());
+            for (INBT rawNbt : structures) {
+                CompoundNBT structureNbt = (CompoundNBT) rawNbt;
+                long position = structureNbt.getLong("position");
+                String structureName = structureNbt.getString("name");
+                structureDataForRegion.put(position, structureName);
             }
+
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void saveStructureRegionToDisk(Long2ReferenceOpenHashMap<LongSet> regionPositions, Structure<?> structure, long activeRegion, File file) {
+
+    private static void saveStructureRegionToDisk(Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions, Structure<?> structure, long activeRegion, File file) {
         String structureName = structure.getFeatureName() + "_positions";
         CompoundNBT nbt = new CompoundNBT();
-        nbt.putLongArray(structureName, regionPositions.get(activeRegion).toLongArray());
+
+        ListNBT structures = new ListNBT();
+        regionPositions.get(activeRegion).forEach((position, structureNameForPosition) -> {
+            CompoundNBT structureNBT = new CompoundNBT();
+            structureNBT.putLong("position", position);
+            structureNBT.putString("name", structureNameForPosition);
+
+            structures.add(structureNBT);
+        });
+        nbt.put("structures", structures);
+
         try {
             CompressedStreamTools.write(nbt, file);
         } catch (IOException e) {
@@ -228,7 +291,9 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
     /**
      * Creates the cache of all structure positions for the given region
      */
-    private void scanRegionStructureGrid(long seed, BiomeProvider biomeSource, Structure<?> village, StructureSeparationSettings structureSeparationSettings, int spacing, Long2ReferenceOpenHashMap<LongSet> regionPositions, int activeMinGridX, int activeMinGridZ, int activeMaxGridX, int activeMaxGridZ) {
+    private static void scanRegionStructureGrid(long seed, BiomeProvider biomeSource, Structure<?> village, StructureSeparationSettings structureSeparationSettings, int spacing, Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions, int activeMinGridX, int activeMinGridZ, int activeMaxGridX, int activeMaxGridZ) {
+        Random random = new Random(seed);
+
         for (int structureGridX = activeMinGridX; structureGridX <= activeMaxGridX; structureGridX++) {
             for (int structureGridZ = activeMinGridZ; structureGridZ <= activeMaxGridZ; structureGridZ++) {
                 long structureChunkPos = getStructureChunkPos(village, seed, structureSeparationSettings.salt(), new SharedSeedRandom(), spacing, structureSeparationSettings.separation(), structureGridX, structureGridZ);
@@ -241,7 +306,7 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
                 ChunkPos chunkPos = village.getPotentialFeatureChunk(structureSeparationSettings, seed, new SharedSeedRandom(), structureChunkPosX, structureChunkPosZ);
 
                 if (chunkPos.x == structureChunkPosX && chunkPos.z == structureChunkPosZ && sampleAndTestChunkBiomesForStructure(structureChunkPosX, structureChunkPosZ, biomeSource, village)) {
-                    regionPositions.computeIfAbsent(structureRegionLong, (value) -> new LongArraySet()).add(structureChunkPos);
+                    regionPositions.computeIfAbsent(structureRegionLong, (value) -> new Long2ObjectArrayMap<>()).put(structureChunkPos, NAMES[random.nextInt(NAMES.length - 1)]);
                 }
             }
         }
@@ -252,12 +317,12 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
     // Path Generators
 
     /************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
-    private void addRegionGeneratorsToCache(ISeedReader worldRegion, long seed, int currentRegionX, int currentRegionZ, long currentRegion, Path generatorStorageDir, StructureSeparationSettings structureSeperationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators) {
+    private void addRegionGeneratorsToCache(ISeedReader worldRegion, long seed, int currentRegionX, int currentRegionZ, long currentRegion, Path generatorStorageDir, StructureSeparationSettings structureSeparationSettings, Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators) {
         String fileName = currentRegionX + "," + currentRegionZ + ".2dr";
         File file = generatorStorageDir.resolve(fileName).toFile();
 
         if (!file.exists()) {
-            List<WarpedStartEndGenerator> warpedStartEndGenerators = processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeperationSettings, regionPositions, regionPathGenerators);
+            List<WarpedStartEndGenerator> warpedStartEndGenerators = processPathGeneratorsForRegion(worldRegion, seed, currentRegion, structureSeparationSettings, regionPositions, regionPathGenerators);
 
             saveRegionGeneratorsToDisk(file, warpedStartEndGenerators);
         } else {
@@ -296,13 +361,13 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
         }
     }
 
-    private List<WarpedStartEndGenerator> processPathGeneratorsForRegion(ISeedReader worldRegion, long seed, long currentRegion, StructureSeparationSettings structureSeparationSettings, Long2ReferenceOpenHashMap<LongSet> regionPositions, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators) {
+    private List<WarpedStartEndGenerator> processPathGeneratorsForRegion(ISeedReader worldRegion, long seed, long currentRegion, StructureSeparationSettings structureSeparationSettings, Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionPositions, Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators) {
         ArrayList<WarpedStartEndGenerator> warpedStartEndGenerators = regionPathGenerators.computeIfAbsent(currentRegion, (regionLong1) -> new ArrayList<>());
-        LongSet regionStructurePositions = regionPositions.get(currentRegion);
+        Long2ObjectArrayMap<String> regionStructurePositions = regionPositions.get(currentRegion);
         LongSet createdPaths = new LongArraySet();
 
         if (!regionStructurePositions.isEmpty()) {
-            long[] structurePositions = regionStructurePositions.toLongArray();
+            long[] structurePositions = regionStructurePositions.keySet().toLongArray();
 
             for (int idx = 0; idx < structurePositions.length; idx++) {
                 long startStructurePos = structurePositions[idx];
@@ -488,11 +553,11 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
         return noise;
     }
 
-    public boolean sampleAndTestChunkBiomesForStructure(int chunkX, int chunkZ, BiomeManager.IBiomeReader biomeReader, Structure<?> structure) {
+    public static boolean sampleAndTestChunkBiomesForStructure(int chunkX, int chunkZ, BiomeManager.IBiomeReader biomeReader, Structure<?> structure) {
         return biomeReader.getNoiseBiome((chunkX << 2) + 2, 0, (chunkZ << 2) + 2).getGenerationSettings().isValidStart(structure);
     }
 
-    private long getStructureChunkPos(Structure<?> structure, long worldSeed, int structureSalt, SharedSeedRandom seedRandom, int spacing, int separation, int floorDivX, int floorDivZ) {
+    private static long getStructureChunkPos(Structure<?> structure, long worldSeed, int structureSalt, SharedSeedRandom seedRandom, int spacing, int separation, int floorDivX, int floorDivZ) {
         int x;
         int z;
         seedRandom.setLargeFeatureWithSalt(worldSeed, floorDivX, floorDivZ, structureSalt);

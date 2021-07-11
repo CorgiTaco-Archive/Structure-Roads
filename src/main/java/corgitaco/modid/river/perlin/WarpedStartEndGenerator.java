@@ -55,7 +55,6 @@ public class WarpedStartEndGenerator {
         nodes.add(new Node(startPos.mutable(), 0));
         int distanceInNodes = 100000;
 
-        noise.SetDomainWarpAmp(1000);
         for (int nodeIdx = 1; nodeIdx < distanceInNodes; nodeIdx++) {
             Node prevNode = nodes.get(nodeIdx - 1);
             BlockPos.Mutable prevPos = prevNode.getPos();
@@ -80,8 +79,8 @@ public class WarpedStartEndGenerator {
             double relativeX = vector.x - pos.getX();
             double relativeZ = vector.y - pos.getZ();
 
-            double newWarpedX = pos.getX() + maxWarp * relativeX;
-            double newWarpedZ = pos.getZ() + maxWarp * relativeZ;
+            double newWarpedX = pos.getX() + (maxWarp * relativeX);
+            double newWarpedZ = pos.getZ() + (maxWarp * relativeZ);
 
             pos.setX((int) newWarpedX);
             pos.setZ((int) newWarpedZ);

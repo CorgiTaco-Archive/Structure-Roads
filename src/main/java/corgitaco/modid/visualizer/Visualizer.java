@@ -18,7 +18,7 @@ import static corgitaco.modid.util.MathUtil.inRange;
 public class Visualizer {
 
     public static void main(String[] args) {
-        int seed = 445745457;
+        int seed = 128374575;
         Random random = new Random(seed);
         int range = 1000;
         BufferedImage img = new BufferedImage(range, range, BufferedImage.TYPE_INT_RGB);
@@ -98,7 +98,9 @@ public class Visualizer {
     public static FastNoise createNoise(int seed) {
         FastNoise noise = new FastNoise(seed);
         noise.SetNoiseType(FastNoise.NoiseType.OpenSimplex2S);
-        noise.SetFrequency(0.0005F);
+        noise.SetFrequency(0.00000000000000003455F);
+        noise.SetFractalGain(5);
+
         return noise;
     }
 }
