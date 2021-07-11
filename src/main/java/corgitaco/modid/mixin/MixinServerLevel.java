@@ -2,8 +2,8 @@ package corgitaco.modid.mixin;
 
 import corgitaco.modid.Main;
 import corgitaco.modid.mixin.access.ChunkManagerAccess;
-import corgitaco.modid.river.perlin.WarpedStartEndGenerator;
-import corgitaco.modid.structure.PathGeneratorsWorldContext;
+import corgitaco.modid.path.WarpedStartEndGenerator;
+import corgitaco.modid.path.PathGeneratorsWorldContext;
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import net.minecraft.server.MinecraftServer;

@@ -1,5 +1,6 @@
-package corgitaco.modid.river;
+package corgitaco.modid.path;
 
+import corgitaco.modid.util.MathUtil;
 import corgitaco.modid.util.fastnoise.FastNoise;
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -8,6 +9,7 @@ import net.minecraft.nbt.INBT;
 import net.minecraft.nbt.ListNBT;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.SectionPos;
 import net.minecraft.util.math.vector.Vector2f;
 import net.minecraft.util.math.vector.Vector3i;
@@ -16,12 +18,13 @@ import net.minecraft.world.gen.Heightmap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.function.Predicate;
 
 /**
  * Used to dynamically create a randomly generated path from 1 object to another.
  */
-public class StartEndPathGenerator {
+public class WarpedStartEndGenerator {
     private final List<Node> nodes;
     private final Long2ObjectArrayMap<List<Node>> fastNodes;
     private final FastNoise noise;
@@ -34,7 +37,7 @@ public class StartEndPathGenerator {
     public static final boolean RETURN_BROKEN_GENERATORS = false;
 
 
-    public StartEndPathGenerator(List<Node> nodes, Long2ObjectArrayMap<List<Node>> fastNodes, FastNoise noise, BlockPos startPos, BlockPos endPos, int distanceBetweenNodes) {
+    public WarpedStartEndGenerator(List<Node> nodes, Long2ObjectArrayMap<List<Node>> fastNodes, FastNoise noise, BlockPos startPos, BlockPos endPos, int distanceBetweenNodes) {
         this.nodes = nodes;
         this.fastNodes = fastNodes;
         this.noise = noise;
@@ -43,7 +46,7 @@ public class StartEndPathGenerator {
         this.distanceBetweenNodes = distanceBetweenNodes;
     }
 
-    public StartEndPathGenerator(FastNoise noise, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, float generatorRotation, int distanceBetweenNodes) {
+    public WarpedStartEndGenerator(FastNoise noise, Random random, BlockPos startPos, BlockPos endPos, Predicate<Node> isInvalid, Predicate<Node> isValid, int maxDistance, float generatorRotation, int distanceBetweenNodes) {
         this.noise = noise;
         this.startPos = startPos;
         this.endPos = endPos;
@@ -52,48 +55,39 @@ public class StartEndPathGenerator {
         Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
 
         nodes.add(new Node(startPos.mutable(), 0));
-        int distanceInNodes = maxDistance / distanceBetweenNodes;
+        int distanceInNodes = 100000;
 
-
-        for (int i = 1; i < distanceInNodes; i++) {
-            Node prevNode = nodes.get(i - 1);
+        for (int nodeIdx = 1; nodeIdx < distanceInNodes; nodeIdx++) {
+            Node prevNode = nodes.get(nodeIdx - 1);
             BlockPos.Mutable prevPos = prevNode.getPos();
-            float angle = noise.GetNoise(prevPos.getX(), 0, prevPos.getZ());
-            float noiseAngle = angle * 5;
 
-            Vector3i angleOffset = getAngleOffset(noiseAngle);
-            BlockPos.Mutable pos = new BlockPos.Mutable(prevPos.getX() + angleOffset.getX(), prevPos.getY() + angleOffset.getY(), prevPos.getZ() + angleOffset.getZ());
-            Node nextNode = new Node(pos, i);
+            double angle = MathUtil.angle(prevPos, endPos);
+
+            int xOffset = (int) (Math.sin(angle) * distanceBetweenNodes);
+            int zOffset = (int) (Math.cos(angle) * distanceBetweenNodes);
+
+
+            BlockPos.Mutable pos = new BlockPos.Mutable(prevPos.getX() + xOffset, prevPos.getY(), prevPos.getZ() + zOffset);
+
+            double dotProduct = (pos.getX() - startPos.getX()) * (endPos.getX() - startPos.getX()) + (pos.getZ() - startPos.getZ()) * (endPos.getZ() - startPos.getZ());
+            double distSq = (endPos.getX() - startPos.getX()) * (endPos.getX() - startPos.getX()) + (endPos.getZ() - startPos.getZ()) * (endPos.getZ() - startPos.getZ());
+            double slide = (double) nodeIdx / distanceInNodes;
+
+            double clampedSlide = MathHelper.clampedLerp(0, 1, slide);
+            double maxWarp = 1 - 4 * (clampedSlide - 0.5) * (clampedSlide - 0.5);
+
+            FastNoise.Vector2 vector = new FastNoise.Vector2(pos.getX(), pos.getZ());
+            noise.DomainWarp(vector);
+            double relativeX = vector.x - pos.getX();
+            double relativeZ = vector.y - pos.getZ();
+
+            double newWarpedX = pos.getX() + (maxWarp * relativeX);
+            double newWarpedZ = pos.getZ() + (maxWarp * relativeZ);
+
+            pos.setX((int) newWarpedX);
+            pos.setZ((int) newWarpedZ);
+            Node nextNode = new Node(pos, nodeIdx);
             long key = ChunkPos.asLong(SectionPos.blockToSectionCoord(nextNode.getPos().getX()), SectionPos.blockToSectionCoord(nextNode.getPos().getZ()));
-
-            List<BlockPos> failedPositions = new ArrayList<>();
-            double degreesRotated = DEGREE_ROTATION;
-            while (isInvalid.test(nextNode)) {
-                Vector3i rotatedAngleOffset = getAngleOffset((float) (noiseAngle + degreesRotated));
-                degreesRotated += DEGREE_ROTATION;
-                BlockPos failedPos = new BlockPos(nextNode.getPos());
-                nextNode.getPos().set(prevPos.getX() + rotatedAngleOffset.getX(), 0, prevPos.getZ() + rotatedAngleOffset.getZ());
-                nextNode.setAngleOffset((float) degreesRotated);
-
-                failedPositions.add(failedPos);
-
-                if (degreesRotated >= Math.PI * 2) {
-                    if (RETURN_BROKEN_GENERATORS) {
-                        nextNode.getFailedPositions().addAll(failedPositions);
-                        nodes.add(nextNode);
-                        fastNodes.computeIfAbsent(key, key2 -> new ArrayList<>()).add(nextNode);
-                        this.nodes = nodes;
-                        this.fastNodes = fastNodes;
-                        return; // This should never ever hit.
-                    } else {
-                        this.nodes = null;
-                        this.fastNodes = null;
-                        return;
-                    }
-                }
-            }
-
-
 
             if (isValid.test(nextNode)) {
                 nodes.add(nextNode);
@@ -139,7 +133,7 @@ public class StartEndPathGenerator {
         return nbt;
     }
 
-    public static StartEndPathGenerator read(CompoundNBT readTag) {
+    public static WarpedStartEndGenerator read(CompoundNBT readTag) {
         Long2ObjectArrayMap<List<Node>> fastNodes = new Long2ObjectArrayMap<>();
         ArrayList<Node> allNodes = new ArrayList<>();
 
@@ -175,7 +169,7 @@ public class StartEndPathGenerator {
             fastNodes.put(chunkPos, nodes);
         }
 
-        return new StartEndPathGenerator(allNodes, fastNodes, WorldStructureAwarePathGenerator.createNoise(seed), startPos, endPos, distanceBetweenNodes);
+        return new WarpedStartEndGenerator(allNodes, fastNodes, WorldStructureAwareWarpedPathGenerator.createNoise(seed), startPos, endPos, distanceBetweenNodes);
     }
 
     public int[] writeBlockPos(BlockPos pos) {
@@ -245,7 +239,7 @@ public class StartEndPathGenerator {
         return distanceBetweenNodes;
     }
 
-    static class Node {
+    public static class Node {
 
         private final int idx;
         private final BlockPos.Mutable pos;
@@ -281,7 +275,6 @@ public class StartEndPathGenerator {
             if (heightAtLocation == 0) {
                 heightAtLocation = generator.getBaseHeight(pos.getX(), pos.getZ(), Heightmap.Type.WORLD_SURFACE_WG);
             }
-
             return heightAtLocation;
         }
 

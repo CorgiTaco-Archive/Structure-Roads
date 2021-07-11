@@ -1,8 +1,6 @@
 package corgitaco.modid;
 
-import corgitaco.modid.river.WorldPathGenerator;
-import corgitaco.modid.river.WorldStructureAwarePathGenerator;
-import corgitaco.modid.river.perlin.WorldStructureAwareWarpedPathGenerator;
+import corgitaco.modid.path.WorldStructureAwareWarpedPathGenerator;
 import net.minecraft.world.gen.feature.Feature;
 import net.minecraft.world.gen.feature.NoFeatureConfig;
 import net.minecraftforge.event.RegistryEvent;
@@ -28,10 +26,8 @@ public class Main {
     public static class WorldGenRegistries {
         @SubscribeEvent
         public static void registerFeatures(RegistryEvent.Register<Feature<?>> event) {
-            Feature<NoFeatureConfig> path = WorldPathGenerator.PATH;
-            Feature<NoFeatureConfig> path2 = WorldStructureAwarePathGenerator.PATH;
             Feature<NoFeatureConfig> path3 = WorldStructureAwareWarpedPathGenerator.PATH;
-            event.getRegistry().registerAll(path, path2, path3);
+            event.getRegistry().registerAll(path3);
         }
     }
 }

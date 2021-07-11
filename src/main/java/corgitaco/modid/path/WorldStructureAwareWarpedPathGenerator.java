@@ -1,9 +1,8 @@
-package corgitaco.modid.river.perlin;
+package corgitaco.modid.path;
 
 import com.mojang.serialization.Codec;
 import corgitaco.modid.Main;
 import corgitaco.modid.mixin.access.StructureAccess;
-import corgitaco.modid.structure.PathGeneratorsWorldContext;
 import corgitaco.modid.structure.StructureNameContext;
 import corgitaco.modid.util.BiomeUtils;
 import corgitaco.modid.util.fastnoise.FastNoise;
@@ -496,7 +495,7 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
     private void generateBlocksForNode(ISeedReader worldRegion, int chunkX, int chunkZ, WarpedStartEndGenerator pathGenerator, int size, WarpedStartEndGenerator.Node node) {
         int nodeX = node.getPos().getX();
         int nodeZ = node.getPos().getZ();
-
+        ChunkGenerator generator = worldRegion.getLevel().getChunkSource().getGenerator();
         BlockPos.Mutable mutable1 = new BlockPos.Mutable();
         if (DEBUG_ANGLES) {
             debugFailedAngles(worldRegion, node, mutable1);
@@ -514,7 +513,18 @@ public class WorldStructureAwareWarpedPathGenerator extends Feature<NoFeatureCon
                     for (int zMove = -size; zMove < size; zMove++) {
                         int blockX = subNodeX + xMove;
                         int blockZ = subNodeZ + zMove;
-                        mutable1.set(blockX, worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, blockX, blockZ) - 1, blockZ);
+                        int heightAtNode = worldRegion.getHeight(Heightmap.Type.WORLD_SURFACE_WG, blockX, blockZ) - 1;
+
+//                        int currentNodeIDX = node.getIdx();
+//                        if (currentNodeIDX > 1 && currentNodeIDX < pathGenerator.getNodes().size() - 1 && pathGenerator.getNodes().get(currentNodeIDX - 1).getHeightAtLocation(generator) + 5 < heightAtNode) {
+//                            heightAtNode = heightAtNode - 5;
+//                            mutable1.set(blockX, heightAtNode - 1, blockZ);
+//                            for (int yMove = 0; yMove < 5; yMove++) {
+//                                worldRegion.setBlock(mutable1.move(Direction.UP), Blocks.AIR.defaultBlockState(), 2);
+//                            }
+//                        }
+                        mutable1.set(blockX, heightAtNode, blockZ);
+                        node.setHeightAtLocation(heightAtNode);
                         worldRegion.setBlock(mutable1, Blocks.COBBLESTONE.defaultBlockState(), 2);
                     }
                 }

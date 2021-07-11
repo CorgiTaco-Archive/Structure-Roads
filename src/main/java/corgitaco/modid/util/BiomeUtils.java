@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import corgitaco.modid.Main;
 import corgitaco.modid.mixin.access.BiomeGenerationSettingsAccess;
-import corgitaco.modid.river.perlin.WorldStructureAwareWarpedPathGenerator;
+import corgitaco.modid.path.WorldStructureAwareWarpedPathGenerator;
 import net.minecraft.util.RegistryKey;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.registry.Registry;

@@ -1,6 +1,6 @@
-package corgitaco.modid.structure;
+package corgitaco.modid.path;
 
-import corgitaco.modid.river.perlin.WarpedStartEndGenerator;
+import corgitaco.modid.path.WarpedStartEndGenerator;
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 

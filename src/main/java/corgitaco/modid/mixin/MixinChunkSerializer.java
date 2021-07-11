@@ -1,7 +1,7 @@
 package corgitaco.modid.mixin;
 
 
-import corgitaco.modid.structure.PathGeneratorsWorldContext;
+import corgitaco.modid.path.PathGeneratorsWorldContext;
 import corgitaco.modid.structure.StructureNameContext;
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
@@ -24,7 +24,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Map;
 
-import static corgitaco.modid.river.perlin.WorldStructureAwareWarpedPathGenerator.*;
+import static corgitaco.modid.path.WorldStructureAwareWarpedPathGenerator.*;
 
 @Mixin(ChunkSerializer.class)
 public class MixinChunkSerializer {

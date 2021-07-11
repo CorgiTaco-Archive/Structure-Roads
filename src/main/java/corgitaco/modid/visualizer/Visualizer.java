@@ -1,6 +1,6 @@
 package corgitaco.modid.visualizer;
 
-import corgitaco.modid.river.perlin.WarpedStartEndGenerator;
+import corgitaco.modid.path.WarpedStartEndGenerator;
 import corgitaco.modid.util.fastnoise.FastNoise;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
