@@ -7,9 +7,10 @@
   "mixins": [
     "MixinBiomeGenerationSettings",
     "MixinChunkSerializer",
+    "MixinDebugRenderer",
     "MixinMinecraftServer",
-    "MixinServerPlayer",
     "MixinServerLevel",
+    "MixinServerPlayer",
     "MixinStructureStart",
     "access.BiomeGenerationSettingsAccess",
     "access.ChunkManagerAccess",
