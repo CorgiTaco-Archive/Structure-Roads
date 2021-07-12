@@ -6,7 +6,7 @@ public class AdditionalStructureContext {
 
     private final String name;
     private int tier;
-
+    private boolean wasChanged;
 
     public AdditionalStructureContext(String name) {
         this(name, 0);
@@ -30,6 +30,14 @@ public class AdditionalStructureContext {
         compoundNBT.putString("name", this.name);
         compoundNBT.putInt("tier", this.tier);
         return compoundNBT;
+    }
+
+    public boolean wasChanged() {
+        return wasChanged;
+    }
+
+    public void markChanged() {
+        this.wasChanged = true;
     }
 
     public int getTier() {

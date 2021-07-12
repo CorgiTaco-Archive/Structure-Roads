@@ -3,6 +3,7 @@ package corgitaco.modid.mixin;
 import com.mojang.datafixers.util.Either;
 import corgitaco.modid.Main;
 import corgitaco.modid.mixin.access.SingleJigsawPieceAccess;
+import corgitaco.modid.structure.StructureNameContext;
 import net.minecraft.block.Blocks;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -36,11 +37,11 @@ public class MixinChunkHolder {
 
     private void upgradeStructure(Chunk chunk) {
         ServerWorld serverLevel = (ServerWorld) chunk.getLevel();
-        Optional<? extends StructureStart<?>> village = serverLevel.startsForFeature(SectionPos.of(chunk.getPos().x, 0, chunk.getPos().z), Structure.VILLAGE).findFirst();
-        if (village.isPresent()) {
-            StructureStart<?> structureStart = village.get();
-            if (serverLevel.getGameTime() % 1000 == 0) {
-                for (StructurePiece piece : structureStart.getPieces()) {
+        StructureStart<?> villageStart = chunk.getStartForFeature(Structure.VILLAGE);
+        if (villageStart != null && villageStart.isValid() && !((StructureNameContext) villageStart).getStructureName().wasChanged()) {
+            if (serverLevel.getGameTime() % 500 == 0) {
+                ((StructureNameContext) villageStart).getStructureName().markChanged();
+                for (StructurePiece piece : villageStart.getPieces()) {
                     if (piece instanceof AbstractVillagePiece) {
                         JigsawPiece element = ((AbstractVillagePiece) piece).getElement();
 
@@ -59,15 +60,15 @@ public class MixinChunkHolder {
                                     MutableBoundingBox boundingBox = piece.getBoundingBox();
 
                                     BlockPos.Mutable mutable = new BlockPos.Mutable();
-                                    for (int xClear = boundingBox.x0; xClear < boundingBox.x1; xClear++) {
-                                        for (int zClear = boundingBox.z0; zClear < boundingBox.z1; zClear++) {
-                                            for (int yClear = boundingBox.y0; yClear < boundingBox.y1; yClear++) {
+                                    for (int xClear = boundingBox.x0; xClear <= boundingBox.x1; xClear++) {
+                                        for (int zClear = boundingBox.z0; zClear <= boundingBox.z1; zClear++) {
+                                            for (int yClear = boundingBox.y0; yClear <= boundingBox.y1; yClear++) {
                                                 serverLevel.setBlock(mutable.set(xClear, yClear, zClear), Blocks.AIR.defaultBlockState(), 2);
                                             }
                                         }
                                     }
                                     MutableBoundingBox newBB = new MutableBoundingBox(boundingBox.x0, boundingBox.y0, boundingBox.z0, boundingBox.x1, serverLevel.getHeight(), boundingBox.z1);
-                                    newTemplate.placeInWorld(serverLevel, new BlockPos(boundingBox.x0, boundingBox.y0, boundingBox.z0), ((SingleJigsawPieceAccess) element).invokeGetSettings(piece.getRotation(), newBB, false), serverLevel.getRandom());
+                                    newTemplate.placeInWorld(serverLevel, new BlockPos(boundingBox.x0, boundingBox.y0, boundingBox.z0), ((SingleJigsawPieceAccess) element).invokeGetSettings(piece.getRotation(), newBB, true), serverLevel.getRandom());
                                 }
                             }
                         }
