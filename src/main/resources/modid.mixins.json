@@ -6,6 +6,7 @@
   "refmap": "modid.refmap.json",
   "mixins": [
     "MixinBiomeGenerationSettings",
+    "MixinChunkHolder",
     "MixinChunkSerializer",
     "MixinDebugRenderer",
     "MixinMinecraftServer",
@@ -14,6 +15,7 @@
     "MixinStructureStart",
     "access.BiomeGenerationSettingsAccess",
     "access.ChunkManagerAccess",
+    "access.SingleJigsawPieceAccess",
     "access.StructureAccess"
   ],
   "client": [

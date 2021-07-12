@@ -1,5 +1,6 @@
 package corgitaco.modid.mixin;
 
+import corgitaco.modid.structure.AdditionalStructureContext;
 import corgitaco.modid.structure.StructureNameContext;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.util.math.BlockPos;
@@ -38,14 +39,14 @@ public abstract class MixinServerPlayer {
             if (village.isPresent()) {
                 StructureStart<?> startForFeature = village.get();
                 if (startForFeature.isValid()) {
-                    String structureName = ((StructureNameContext) startForFeature).getStructureName();
+                    AdditionalStructureContext structureName = ((StructureNameContext) startForFeature).getStructureName();
 
                     if (startForFeature.getBoundingBox().isInside(currentPos)) {
                         if (structureName != null && !sentMsg) {
-                            this.displayClientMessage(new TranslationTextComponent("Now entering: %s", structureName), true);
+                            this.displayClientMessage(new TranslationTextComponent("Now entering: %s", structureName.getName()), true);
                             sentMsg = true;
                         } else {
-                            this.displayClientMessage(new TranslationTextComponent("Currently in: %s", structureName), true);
+                            this.displayClientMessage(new TranslationTextComponent("Currently in: %s", structureName.getName()), true);
                         }
                     } else {
                         sentMsg = false;

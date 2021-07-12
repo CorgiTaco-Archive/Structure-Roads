@@ -4,6 +4,7 @@ import corgitaco.modid.Main;
 import corgitaco.modid.mixin.access.ChunkManagerAccess;
 import corgitaco.modid.path.WarpedStartEndGenerator;
 import corgitaco.modid.path.PathGeneratorsWorldContext;
+import corgitaco.modid.structure.AdditionalStructureContext;
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import net.minecraft.server.MinecraftServer;
@@ -35,7 +36,7 @@ public abstract class MixinServerLevel implements PathGeneratorsWorldContext {
     @Shadow
     public abstract ServerChunkProvider getChunkSource();
 
-    private final Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> structurePositionsToName = new Long2ReferenceOpenHashMap<>();
+    private final Long2ReferenceOpenHashMap<Long2ObjectArrayMap<AdditionalStructureContext>> structurePositionsToName = new Long2ReferenceOpenHashMap<>();
     private final Long2ReferenceOpenHashMap<ArrayList<WarpedStartEndGenerator>> regionPathGenerators = new Long2ReferenceOpenHashMap<>();
     private Path worldStructuresCache;
     private Path worldGeneratorsCache;
@@ -63,7 +64,7 @@ public abstract class MixinServerLevel implements PathGeneratorsWorldContext {
     }
 
     @Override
-    public Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> getRegionStructurePositionsToName() {
+    public Long2ReferenceOpenHashMap<Long2ObjectArrayMap<AdditionalStructureContext>> getRegionStructurePositionsToContext() {
         return structurePositionsToName;
     }
 

@@ -2,6 +2,7 @@ package corgitaco.modid.mixin;
 
 
 import corgitaco.modid.path.PathGeneratorsWorldContext;
+import corgitaco.modid.structure.AdditionalStructureContext;
 import corgitaco.modid.structure.StructureNameContext;
 import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
@@ -53,7 +54,7 @@ public class MixinChunkSerializer {
                 PathGeneratorsWorldContext pathGeneratorsWorldContext = (PathGeneratorsWorldContext) world;
                 ChunkGenerator generator = world.getChunkSource().generator;
                 StructureSeparationSettings config = generator.getSettings().getConfig(Structure.VILLAGE);
-                Long2ReferenceOpenHashMap<Long2ObjectArrayMap<String>> regionStructurePositionsToName = pathGeneratorsWorldContext.getRegionStructurePositionsToName();
+                Long2ReferenceOpenHashMap<Long2ObjectArrayMap<AdditionalStructureContext>> regionStructurePositionsToName = pathGeneratorsWorldContext.getRegionStructurePositionsToContext();
 
                 for (int chunkX = minChunkX; chunkX < maxChunkX; chunkX++) {
                     for (int chunkZ = minChunkZ; chunkZ < maxChunkZ; chunkZ++) {
@@ -67,7 +68,7 @@ public class MixinChunkSerializer {
                     }
                 }
 
-                Long2ObjectArrayMap<String> structureToStructureName = regionStructurePositionsToName.get(currentRegion);
+                Long2ObjectArrayMap<AdditionalStructureContext> structureToStructureName = regionStructurePositionsToName.get(currentRegion);
                 if (structureToStructureName.containsKey(currentChunk)) {
                     ((StructureNameContext) structureStart).setStructureName(structureToStructureName.get(currentChunk));
                 }

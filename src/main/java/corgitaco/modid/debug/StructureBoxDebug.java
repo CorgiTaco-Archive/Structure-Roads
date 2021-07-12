@@ -12,6 +12,7 @@ import net.minecraft.server.integrated.IntegratedServer;
 import net.minecraft.util.math.MutableBoundingBox;
 import net.minecraft.util.math.SectionPos;
 import net.minecraft.world.gen.feature.structure.Structure;
+import net.minecraft.world.gen.feature.structure.StructurePiece;
 
 public class StructureBoxDebug implements DebugRenderer.IDebugRenderer {
 
@@ -36,6 +37,10 @@ public class StructureBoxDebug implements DebugRenderer.IDebugRenderer {
                 singleplayerServer.getLevel(Minecraft.getInstance().level.dimension()).startsForFeature(SectionPos.of(player.blockPosition()), Structure.VILLAGE).forEach(structureStart -> {
                     MutableBoundingBox mutableboundingbox1 = structureStart.getBoundingBox();
                     WorldRenderer.renderLineBox(stack, ivertexbuilder, (double)mutableboundingbox1.x0 - x, (double)mutableboundingbox1.y0 - y, (double)mutableboundingbox1.z0 - z, (double)(mutableboundingbox1.x1 + 1) - x, (double)(mutableboundingbox1.y1 + 1) - y, (double)(mutableboundingbox1.z1 + 1) - z, 0.0F, 1.0F, 0.0F, 1.0F, 0.0F, 1.0F, 0.0F);
+                    for (StructurePiece piece : structureStart.getPieces()) {
+                        MutableBoundingBox pieceBox = piece.getBoundingBox();
+                        WorldRenderer.renderLineBox(stack, ivertexbuilder, (double)pieceBox.x0 - x, (double)pieceBox.y0 - y, (double)pieceBox.z0 - z, (double)(pieceBox.x1 + 1) - x, (double)(pieceBox.y1 + 1) - y, (double)(pieceBox.z1 + 1) - z, 0.0F, 1.0F, 0.0F, 1.0F, 0.0F, 1.0F, 0.0F);
+                    }
                 });
             }
         }

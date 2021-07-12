@@ -5,7 +5,7 @@ import javax.annotation.Nullable;
 public interface StructureNameContext {
 
     @Nullable
-    String getStructureName();
+    AdditionalStructureContext getStructureName();
 
-    void setStructureName(String structureName);
+    void setStructureName(AdditionalStructureContext structureName);
 }

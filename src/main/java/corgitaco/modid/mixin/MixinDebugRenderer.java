@@ -16,8 +16,9 @@ public class MixinDebugRenderer {
 
     private final StructureBoxDebug debugBox = new StructureBoxDebug();
 
-    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/debug/DebugRenderer$IDebugRenderer;render(Lcom/mojang/blaze3d/matrix/MatrixStack;Lnet/minecraft/client/renderer/IRenderTypeBuffer;DDD)V"))
+    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/debug/DebugRenderer$IDebugRenderer;render(Lcom/mojang/blaze3d/matrix/MatrixStack;Lnet/minecraft/client/renderer/IRenderTypeBuffer;DDD)V"), cancellable = true)
     private void yeet(MatrixStack stack, IRenderTypeBuffer.Impl impl, double x, double y, double z, CallbackInfo ci) {
+        ci.cancel();
         this.debugBox.render(stack, impl, x, y, z);
     }
 }
